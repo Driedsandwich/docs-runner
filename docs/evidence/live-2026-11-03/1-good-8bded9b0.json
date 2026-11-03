@@ -1,0 +1,166 @@
+{
+  "id": "8bded9b0f6e64653b4fb528f6e23ad1b",
+  "url": "https://64-177-58-251.sslip.io/demo-docs/good",
+  "state": "completed",
+  "phase": "finished",
+  "injection": {
+    "injection_detected": false,
+    "reason": "The payload is a benign HTML quickstart guide with three steps: create hello.py via printf, run it with python3, and check the Python version. There are no hidden HTML comments, no instructions directed at an assistant, no requests to reveal secrets or environment variables, and no text attempting to override or manipulate system behavior. All content is ordinary documentation data."
+  },
+  "steps": [
+    {
+      "step": {
+        "id": 1,
+        "command": "printf 'print(\"Hello from Docs Runner\")\\n' > hello.py",
+        "depends_on": [],
+        "expectations": [
+          {
+            "kind": "file",
+            "value": "hello.py",
+            "source_quote": "Expected file: hello.py"
+          }
+        ]
+      },
+      "status": "passed",
+      "reason": "Exit code 0 and all documented expectations matched",
+      "attempts": [
+        {
+          "evidence": {
+            "command": "printf 'print(\"Hello from Docs Runner\")\\n' > hello.py",
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": "",
+            "duration_seconds": 0.615,
+            "limits": [
+              "pids_unmetered"
+            ],
+            "matched": [
+              true
+            ],
+            "metrics_available": false
+          },
+          "status": "passed",
+          "reason": "Exit code 0 and all documented expectations matched"
+        }
+      ],
+      "diagnosis": null,
+      "retry_status": null
+    },
+    {
+      "step": {
+        "id": 2,
+        "command": "python3 hello.py",
+        "depends_on": [
+          1
+        ],
+        "expectations": [
+          {
+            "kind": "stdout",
+            "value": "Hello from Docs Runner",
+            "source_quote": "Expected stdout: Hello from Docs Runner"
+          }
+        ]
+      },
+      "status": "passed",
+      "reason": "Exit code 0 and all documented expectations matched",
+      "attempts": [
+        {
+          "evidence": {
+            "command": "python3 hello.py",
+            "exit_code": 0,
+            "stdout": "Hello from Docs Runner\n",
+            "stderr": "",
+            "duration_seconds": 0.577,
+            "limits": [
+              "pids_unmetered"
+            ],
+            "matched": [
+              true
+            ],
+            "metrics_available": false
+          },
+          "status": "passed",
+          "reason": "Exit code 0 and all documented expectations matched"
+        }
+      ],
+      "diagnosis": null,
+      "retry_status": null
+    },
+    {
+      "step": {
+        "id": 3,
+        "command": "python3 --version",
+        "depends_on": [],
+        "expectations": []
+      },
+      "status": "no_expectation",
+      "reason": "The document states no expected output or file",
+      "attempts": [
+        {
+          "evidence": {
+            "command": "python3 --version",
+            "exit_code": 0,
+            "stdout": "Python 3.12.16\n",
+            "stderr": "",
+            "duration_seconds": 0.577,
+            "limits": [
+              "pids_unmetered"
+            ],
+            "matched": [],
+            "metrics_available": false
+          },
+          "status": "no_expectation",
+          "reason": "The document states no expected output or file"
+        }
+      ],
+      "diagnosis": null,
+      "retry_status": null
+    }
+  ],
+  "error": null,
+  "llm_calls": 3,
+  "runtime": "runsc",
+  "cleanup": {
+    "sandbox_removed": true,
+    "proxy_removed": true,
+    "network_removed": true,
+    "denied_destinations": [],
+    "audit_complete": false
+  },
+  "fixture": null,
+  "presentation": {
+    "simulated": false,
+    "label": "8bded9b0f6e64653b4fb528f6e23ad1b",
+    "limits": {
+      "cpus": 1,
+      "memory_mib": 512,
+      "seconds": 60.0,
+      "pids": 128
+    },
+    "isolation": "One disposable sandbox shared across this job's steps",
+    "no_secrets": true,
+    "lifecycle": "destroyed",
+    "containment_events": [],
+    "plan": [
+      {
+        "id": 1,
+        "title": "Step 01",
+        "command": "printf 'print(\"Hello from Docs Runner\")\\n' > hello.py"
+      },
+      {
+        "id": 2,
+        "title": "Step 02",
+        "command": "python3 hello.py"
+      },
+      {
+        "id": 3,
+        "title": "Step 03",
+        "command": "python3 --version"
+      }
+    ],
+    "sandbox_id": "docsrunner-job-8bded9b0f6e64653b4fb528f6e23ad1b",
+    "destroyed_at": 1793741891.666629
+  },
+  "created_at": 1793741878.888166,
+  "revision": 13
+}
