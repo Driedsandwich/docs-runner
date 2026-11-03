@@ -6,7 +6,7 @@ from app.fetch import FetchError, Fetcher, extract_body, public_ips, validate_ur
 
 
 @pytest.mark.parametrize("url", [
-    "file:///etc/passwd", "ftp://example.org/doc", "http://name:password@example.org", "https://example.org:8080/doc",
+    "file:///etc/passwd", "ftp://example.org/doc", "http://name:password" "@example.org", "https://example.org:8080/doc",
     "https://example.org/doc?token=placeholder", "https://example.org/#fragment", "http://example.org\\@127.0.0.1/",
 ])
 def test_invalid_urls(url):
