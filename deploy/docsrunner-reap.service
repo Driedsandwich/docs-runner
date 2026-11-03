@@ -1,0 +1,8 @@
+[Unit]
+Description=Remove expired Docs Runner sandboxes
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/docsrunner/deploy/reap.py
+

@@ -1,0 +1,3 @@
+[http]
+    proxy = http://egress:3128
+

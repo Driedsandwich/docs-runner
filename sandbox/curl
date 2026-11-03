@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/curl.real --config /etc/curlrc "$@"

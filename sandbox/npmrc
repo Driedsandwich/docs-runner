@@ -1,0 +1,7 @@
+proxy=http://egress:3128
+https-proxy=http://egress:3128
+registry=https://registry.npmjs.org/
+cache=/tmp/npm
+audit=false
+fund=false
+

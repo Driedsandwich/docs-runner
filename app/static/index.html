@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Docs Runner</title>
+<body><main><h1>Docs Runner</h1>
+<p>Run public documentation in a disposable sandbox. Check the evidence for every step.</p>
+<form id="job-form"><label>Public README or quickstart URL <input id="url" type="url" required size="64"></label><button id="run">Run</button></form>
+<p>Try a document: <button data-demo="good">Good</button> <button data-demo="stale">Stale</button> <button data-demo="hostile">Hostile</button></p>
+<p id="state" role="status" aria-live="polite">Ready</p><p id="injection"></p><section id="steps" aria-label="Step evidence"></section><pre id="cleanup"></pre>
+</main><script src="/app.js" defer></script></body></html>
