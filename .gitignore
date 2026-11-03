@@ -16,3 +16,7 @@ dist/
 data/
 *.sqlite*
 
+# Local UI verification tools and exported artifacts
+.cache/
+artifacts/
+ui.patch

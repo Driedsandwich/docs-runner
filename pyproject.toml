@@ -15,7 +15,7 @@ test = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2"]
 include = ["app*", "sandbox*", "proxy*", "demo_docs*"]
 
 [tool.setuptools.package-data]
-app = ["static/*.html", "static/*.js"]
+app = ["static/*.html", "static/*.js", "static/*.css"]
 proxy = ["squid.conf.template"]
 demo_docs = ["*.html"]
 

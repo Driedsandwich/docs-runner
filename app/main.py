@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
@@ -16,6 +17,7 @@ STATIC = Path(__file__).parent / "static"
 class JobRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     url: str = Field(min_length=1, max_length=2048)
+    fixture: Literal["good", "stale", "hostile"] | None = None
 
 
 def create_app(settings: Settings | None = None, manager: JobManager | None = None):
@@ -45,13 +47,18 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
             raise HTTPException(403, "Origin is not allowed")
         url = payload.url
         builtin = any(url == f"{settings.docsrunner_public_origin.rstrip('/')}/demo-docs/{name}" for name in ("good", "stale", "hostile"))
-        if not builtin:
+        if payload.fixture:
+            from app.fixtures import FIXTURE_URL
+            if url != FIXTURE_URL:
+                raise HTTPException(422, "Fixtures use https://example.org/quickstart")
+        elif not builtin:
             try:
                 url = validate_url(url)
             except FetchError as exc:
                 raise HTTPException(422, str(exc)) from None
         try:
-            job = await request.app.state.manager.submit(url, request.client.host if request.client else "unknown")
+            address = request.client.host if request.client else "unknown"
+            job = await request.app.state.manager.submit(url, address, fixture=payload.fixture)
         except (BudgetExceeded, Busy) as exc:
             raise HTTPException(429, str(exc), headers={"Retry-After": "60"}) from None
         return {"id": job.id, "state": job.state}
@@ -65,6 +72,15 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
     @app.get("/api/jobs/{job_id}")
     async def status(job_id: str, request: Request):
         return get_job(request, job_id).public(settings.vultr_inference_key.get_secret_value())
+
+    @app.post("/api/jobs/{job_id}/stop", status_code=202)
+    async def stop(job_id: str, request: Request):
+        origin = request.headers.get("origin")
+        if origin and origin.rstrip("/") != settings.docsrunner_public_origin.rstrip("/"):
+            raise HTTPException(403, "Origin is not allowed")
+        job = get_job(request, job_id)
+        await request.app.state.manager.stop(job)
+        return {"id": job.id, "state": job.state}
 
     @app.get("/api/jobs/{job_id}/events")
     async def events(job_id: str, request: Request):
@@ -97,6 +113,10 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
     @app.get("/app.js")
     async def script():
         return FileResponse(STATIC / "app.js", media_type="application/javascript")
+
+    @app.get("/styles.css")
+    async def stylesheet():
+        return FileResponse(STATIC / "styles.css", media_type="text/css")
 
     return app
 

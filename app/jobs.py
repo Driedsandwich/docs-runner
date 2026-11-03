@@ -36,12 +36,15 @@ class Job:
     runtime: str | None = None
     cleanup: dict | None = None
     events: list[dict] = field(default_factory=list)
+    fixture: str | None = None
+    presentation: dict = field(default_factory=dict)
     changed: asyncio.Condition = field(default_factory=asyncio.Condition)
 
     def public(self, secret=""):
         data = {"id": self.id, "url": self.url, "state": self.state, "phase": self.phase,
                 "injection": self.injection, "steps": [s.model_dump() for s in self.steps],
-                "error": self.error, "llm_calls": self.llm_calls, "runtime": self.runtime, "cleanup": self.cleanup}
+                "error": self.error, "llm_calls": self.llm_calls, "runtime": self.runtime, "cleanup": self.cleanup,
+                "fixture": self.fixture, "presentation": self.presentation, "created_at": self.created_at, "revision": len(self.events)}
         # Sanitize values before JSON encoding, preserving valid JSON syntax.
         def clean(value):
             if isinstance(value, str):
@@ -56,7 +59,12 @@ class Job:
     async def emit(self, phase: str):
         self.phase = phase
         async with self.changed:
-            self.events.append({"id": len(self.events) + 1, "phase": phase, "state": self.state})
+            event = {"id": len(self.events) + 1, "phase": phase, "state": self.state}
+            if self.fixture:
+                # Freeze snapshots so reconnect/replay preserves every observed transition.
+                event["snapshot"] = json.loads(json.dumps(self.public()))
+                event["snapshot"]["revision"] = event["id"]
+            self.events.append(event)
             self.changed.notify_all()
 
 
@@ -70,8 +78,9 @@ class JobManager:
         self.jobs: dict[str, Job] = {}
         self.tasks: dict[str, asyncio.Task] = {}
         self.lock = asyncio.Lock()
+        self.fixture_sequence = 1042
 
-    async def submit(self, url: str, address: str) -> Job:
+    async def submit(self, url: str, address: str, fixture: str | None = None) -> Job:
         async with self.lock:
             if len(self.tasks) >= 2:
                 raise Busy("Two jobs are already running")
@@ -80,12 +89,42 @@ class JobManager:
             for job_id, job in list(self.jobs.items()):
                 if job_id not in self.tasks and (now - job.created_at > 3600 or len(self.jobs) >= 200):
                     del self.jobs[job_id]
-            job = Job(uuid.uuid4().hex, url)
+            job = Job(uuid.uuid4().hex, url, fixture=fixture)
+            if fixture:
+                from app.fixtures import prepare
+                prepare(job, f"R-{self.fixture_sequence}")
+                self.fixture_sequence += 1
             self.jobs[job.id] = job
-            task = asyncio.create_task(self.execute(job))
+            task = asyncio.create_task(self.execute_fixture(job) if fixture else self.execute(job))
             self.tasks[job.id] = task
             task.add_done_callback(lambda _: self.tasks.pop(job.id, None))
             return job
+
+    async def execute_fixture(self, job: Job, continuation=False):
+        from app.fixtures import playback, prepare
+        await playback(job, continuation=continuation)
+        # One independent inert follow-up demonstrates recovery, never a real audit.
+        if job.state == "completed" and not continuation and len(self.tasks) < 2:
+            follow = Job(uuid.uuid4().hex, job.url, fixture="good")
+            prepare(follow, f"R-{self.fixture_sequence}", continuation=True)
+            self.fixture_sequence += 1
+            self.jobs[follow.id] = follow
+            task = asyncio.create_task(self.execute_fixture(follow, continuation=True))
+            self.tasks[follow.id] = task
+            task.add_done_callback(lambda _: self.tasks.pop(follow.id, None))
+            job.presentation["next_job_id"] = follow.id
+        await job.emit("finished")
+
+    async def stop(self, job: Job):
+        task = self.tasks.get(job.id)
+        if task and job.phase not in {"finished", "cleaning_up"} and task.cancelling() == 0:
+            # Let a just-created task enter its cleanup-protected body first.
+            await asyncio.sleep(0)
+            if task.done() or task.cancelling() or job.phase in {"finished", "cleaning_up"}:
+                return job
+            job.error = "Stopped by request. Captured evidence is preserved."
+            task.cancel()
+        return job
 
     async def execute(self, job: Job):
         llm = runner = None
@@ -93,6 +132,9 @@ class JobManager:
         try:
             async with deadline:
                 job.state = "running"
+                job.presentation = {"simulated": False, "label": job.id,
+                                    "limits": {"cpus": 1, "memory_mib": 512, "seconds": self.settings.docsrunner_step_seconds, "pids": 128},
+                                    "isolation": "Shared sandbox across steps (existing runner)", "no_secrets": True}
                 await job.emit("fetching")
                 document = await self.fetcher.fetch(job.url)
                 secret = self.settings.vultr_inference_key.get_secret_value()
@@ -105,6 +147,7 @@ class JobManager:
                 if len(plan.steps) > self.settings.docsrunner_max_steps:
                     raise BudgetExceeded("Step limit exceeded")
                 verify_plan_source(plan, body)
+                job.presentation["plan"] = [{"id": s.id, "title": f"Step {s.id:02}", "command": s.command} for s in plan.steps]
                 await job.emit("classifying")
                 decisions = await llm.classify(plan)
                 by_id = {d.step_id: d for d in decisions.decisions}
@@ -169,7 +212,7 @@ class JobManager:
             else:
                 job.state, job.error = "failed", "An external operation timed out"
         except asyncio.CancelledError:
-            job.state, job.error = "cancelled", "Service shutdown"
+            job.state, job.error = "cancelled", job.error or "Service shutdown"
         except (BudgetExceeded, FetchError, InvalidModelOutput) as exc:
             job.state, job.error = "failed", str(exc)
         except (SandboxError, FileNotFoundError):
@@ -191,6 +234,8 @@ class JobManager:
             else:
                 job.cleanup = {"not_created": True, "sandbox_removed": True, "proxy_removed": True,
                                "network_removed": True, "denied_destinations": [], "audit_complete": True}
+            if job.cleanup.get("sandbox_removed") and not job.cleanup.get("not_created"):
+                job.presentation["destroyed_at"] = time.time()
             if llm:
                 try:
                     await llm.close()
