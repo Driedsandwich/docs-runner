@@ -110,13 +110,19 @@ class DockerRunner:
                      "--memory", "128m", "--memory-swap", "128m", "--pids-limit", "32", "--cpus", "0.25",
                      "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,size=32m,mode=1777",
                      "--sysctl", "net.ipv4.ip_forward=0", "--sysctl", "net.ipv6.conf.all.disable_ipv6=1",
-                     "--log-driver", "local", "--log-opt", "max-size=1m", "--log-opt", "max-file=1",
+                     "--log-driver", "local", "--log-opt", "max-size=1m", "--log-opt", "max-file=1", "--log-opt", "compress=false",
                      "--entrypoint", "/bin/sh", self.settings.docsrunner_proxy_image,
                      "-c", 'printf %s "$1" | base64 -d > /tmp/squid.conf; exec /usr/sbin/squid -N -f /tmp/squid.conf', "--", config)
         await docker("network", "connect", self.settings.docsrunner_egress_network, self.proxy)
         await docker("start", self.proxy)
+        # gVisor does not see Docker's embedded DNS, so pin the proxy name to its address on the internal network.
+        proxy_ip = (await docker("inspect", "--format",
+                                 "{{(index .NetworkSettings.Networks \"" + self.network + "\").IPAddress}}",
+                                 self.proxy)).decode().strip()
+        if not proxy_ip:
+            raise SandboxError("Egress proxy has no internal address")
         await docker("create", "--name", self.name, "--label", "docsrunner.managed=true",
-                     "--runtime", self.runtime, "--network", self.network, "--dns", "127.0.0.1",
+                     "--runtime", self.runtime, "--network", self.network, "--dns", "127.0.0.1", "--add-host", f"egress:{proxy_ip}",
                      "--read-only", "--user", "65532:65532", "--cap-drop", "ALL",
                      "--security-opt", "no-new-privileges", "--memory", "512m", "--memory-swap", "512m",
                      "--pids-limit", "128", "--cpus", "1", "--ulimit", "nofile=256:256",

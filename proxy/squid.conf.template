@@ -5,7 +5,6 @@ cache deny all
 cache_store_log none
 cache_log /dev/null
 logfile_rotate 0
-logfile_buffer_size 0
 buffered_logs off
 logformat denial DENIED %sn %Ss %>rd
 acl rejected http_status 403

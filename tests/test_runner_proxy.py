@@ -62,12 +62,15 @@ async def test_container_contract(monkeypatch, settings, runtimes, expected):
             return b'{"Version":"28.0.1"}'
         if args[0] == "info":
             return json.dumps(runtimes).encode()
+        if args[0] == "inspect":
+            return b"172.30.0.2\n"
         return b""
     monkeypatch.setattr("sandbox.runner.docker", fake_docker)
     runner = DockerRunner("test", settings)
     await runner.start("example.org")
     create = next(args for args, _ in calls if args[:3] == ("create", "--name", runner.name))
-    for option in ("--read-only", "--cap-drop", "--security-opt", "--memory", "--memory-swap", "--pids-limit", "--cpus", "--tmpfs", "--user", "--dns"):
+    assert "egress:172.30.0.2" in create
+    for option in ("--read-only", "--cap-drop", "--security-opt", "--memory", "--memory-swap", "--pids-limit", "--cpus", "--tmpfs", "--user", "--dns", "--add-host"):
         assert option in create
     assert "512m" in create and "128" in create and "65532:65532" in create
     assert "--env" not in create and "--volume" not in create and "--privileged" not in create
@@ -98,6 +101,8 @@ async def test_explicit_runtime_is_used(monkeypatch, settings, requested):
             return b'{"Version":"28.0.1"}'
         if args[0] == "info":
             return b'{"runc":{},"runsc":{}}'
+        if args[0] == "inspect":
+            return b"172.30.0.2\n"
         return b""
 
     monkeypatch.setattr("sandbox.runner.docker", fake)

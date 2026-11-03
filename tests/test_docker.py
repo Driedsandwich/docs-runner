@@ -129,7 +129,8 @@ async def test_real_sandbox_files_no_secrets_readonly_and_cleanup(make_runner, r
         "env": info["Config"].get("Env"), "host_config": info["HostConfig"],
         "mounts": info["Mounts"],
     }))
-    assert not info["Config"].get("Env")
+    # The image default PATH is allowed; nothing else (in particular no keys) may be injected.
+    assert [e for e in (info["Config"].get("Env") or []) if not e.startswith("PATH=")] == []
     host = info["HostConfig"]
     assert host["ReadonlyRootfs"]
     assert host["Memory"] == host["MemorySwap"] == 512 * 1024 * 1024
