@@ -60,7 +60,7 @@ class FakeLLM:
         self.calls += 1
         return self.decisions or Decisions(decisions=[Decision(step_id=s.id, action="run", reason="Fixture") for s in plan.steps])
 
-    async def diagnose(self, step, evidence):
+    async def diagnose(self, step, evidence, job_steps=None):
         self.calls += 1
         return Diagnosis(category="documentation", explanation="Old filename", suggested_command=self.repair)
 
@@ -86,7 +86,7 @@ class FakeRunner:
         self.commands.append(step.command)
         await asyncio.sleep(self.delay)
         result = self.evidence.pop(0) if self.evidence else Evidence(command=step.command, exit_code=0, matched=[True] * len(step.expectations))
-        if result.limits:
+        if result.reached_limits:
             self.alive = False
         return result
 

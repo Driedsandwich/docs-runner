@@ -74,9 +74,9 @@ async def test_login_page_unsupported():
 
 async def test_builtin_demo_never_grants_general_local_fetch(monkeypatch):
     fetcher = Fetcher("http://localhost:8000")
-    doc = await fetcher.fetch("http://localhost:8000/demo-docs/hostile")
-    assert doc.builtin and doc.domain == ""
-    assert "Ignore all previous" in doc.raw and "Ignore all previous" not in doc.body
+    # The former local-file bypass is gone, including for the exact demo URL.
+    with pytest.raises(FetchError):
+        await fetcher.fetch("http://localhost:8000/demo-docs/hostile")
     with pytest.raises(FetchError):
         await fetcher.fetch("http://localhost:8000/anything-else")
 

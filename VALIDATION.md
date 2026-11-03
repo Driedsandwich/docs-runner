@@ -15,7 +15,7 @@
   名前のみの `.env.example`、固定した依存ライブラリ。
 - `deploy/`: Ubuntu VM 向け Compose、Caddy、gVisor 手順、異常終了後の回収タイマー。
 
-## 検証結果
+## 検証結果（初回実装時）
 
 - Python **3.12.16** で `.venv/bin/python -m pytest -q` を実行。
 - **93 passed、0 failed、7 skipped**。
@@ -44,7 +44,7 @@
 - 仕事と報告はメモリ内、最大 200 件／1 時間。再起動をまたぐ報告保存は未実装。
   日次予算と接続元の回数制限は SQLite で保持する。
 - URL の query／fragment、認証、ブラウザ描画、対話操作、GPU は対象外。
-  デモの正規 URL だけは同梱ファイルを読む。任意のローカル URL を取得する例外は設けていない。
+  デモも公開 URL を HTTP 取得し、同じ robots.txt・DNS/IP 検査を通す。ローカル URL の例外は設けていない。
 - 実 Vultr API、実 Docker／gVisor／Squid、Compose／HTTPS の稼働は未検証。
   GitHub への公開、Vultr VM の作成、公開デモの配備、画面の作り込みは未実施。
 
@@ -61,3 +61,22 @@
 5. Caddy の HTTPS、接続元制限、日次予算の再起動後の維持、回収タイマーを確認する。
 
 詳しい起動コマンドと公式資料へのリンクは `deploy/README.md` を参照。
+
+## 実デモ経路への変更（2026-11-04）
+
+- 3 つの見本は `DOCSRUNNER_PUBLIC_ORIGIN/demo-docs/<name>` を通常の HTTP 取得・
+  注入検知・抽出・Docker 実行・判定に渡す。ローカルファイルへの取得省略を撤去。
+- fixture は `DOCSRUNNER_UI_FIXTURES=1` の開発環境で明示的に選択した場合のみ。
+  画面に `Preview data` を表示し、既定では API と JobManager の両方で拒否する。
+- A3 の表示に実際の試行、箱 ID、制限、拒否ログ、後始末を接続。SSE は実仕事も
+  各時点の snapshot を持つ。注入と実行時の観測を分け、未観測の結果を補わない。
+- Python 3.12.16、`.venv/bin/pytest -q --basetemp=.tmp/pytest`：
+  **123 passed, 18 skipped in 2.69s**。18 件は Docker CLI と明示的な有効化を要する
+  実コンテナ試験。この環境には Docker CLI がなく、実 Docker／実 Vultr は未検証。
+- 既存の fixture 試験は明示的に有効化して同じ assertions を維持。旧ローカル取得の
+  試験は、見本 URL も取得例外を与えないことへ強化。Docker 試験の実行・隔離・
+  cleanup の assertions は維持し、実表示イベントの確認を追加した。
+- V8 で JavaScript の構文と操作部分を検証。3 ボタンの公開 URL、既定での実行モード、
+  明示的な Preview data 選択、URL 編集時の切替を確認。ブラウザの道具は使用していない。
+- VM での実行・確認手順は `deploy/README.md`。公開設定で good → stale → hostile →
+  good を実行し、API の試行・拒否ログ・制限・新しい箱 ID と cleanup を確認する。

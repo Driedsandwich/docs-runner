@@ -46,12 +46,13 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
         if origin and origin.rstrip("/") != settings.docsrunner_public_origin.rstrip("/"):
             raise HTTPException(403, "Origin is not allowed")
         url = payload.url
-        builtin = any(url == f"{settings.docsrunner_public_origin.rstrip('/')}/demo-docs/{name}" for name in ("good", "stale", "hostile"))
         if payload.fixture:
+            if not settings.docsrunner_ui_fixtures:
+                raise HTTPException(403, "Preview data is disabled")
             from app.fixtures import FIXTURE_URL
             if url != FIXTURE_URL:
                 raise HTTPException(422, "Fixtures use https://example.org/quickstart")
-        elif not builtin:
+        else:
             try:
                 url = validate_url(url)
             except FetchError as exc:
@@ -91,6 +92,14 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
             raise HTTPException(400, "Invalid Last-Event-ID") from None
         return StreamingResponse(request.app.state.manager.events(job, after), media_type="text/event-stream",
                                  headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
+
+    @app.get("/api/config")
+    async def ui_config():
+        return {
+            "demo_urls": {name: f"{settings.docsrunner_public_origin}/demo-docs/{name}"
+                          for name in ("good", "stale", "hostile")},
+            "ui_fixtures": settings.docsrunner_ui_fixtures,
+        }
 
     @app.get("/demo-docs/{name}")
     async def demo(name: str):

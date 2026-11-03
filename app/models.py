@@ -76,9 +76,14 @@ class Evidence(StrictModel):
     stdout: str = ""
     stderr: str = ""
     duration_seconds: float = 0
-    limits: list[Literal["timeout", "oom", "pids"]] = Field(default_factory=list)
+    # pids_unmetered is a visibility annotation, never proof of a limit hit.
+    limits: list[Literal["timeout", "oom", "pids", "pids_unmetered"]] = Field(default_factory=list)
     matched: list[bool] = Field(default_factory=list)
     metrics_available: bool = False
+
+    @property
+    def reached_limits(self) -> list[str]:
+        return [limit for limit in self.limits if limit != "pids_unmetered"]
 
 
 Status = Literal["passed", "failed", "needs_credential", "no_expectation", "unsupported"]

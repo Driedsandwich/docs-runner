@@ -12,6 +12,11 @@ from app.policy import classify, verify_plan_source
     (0, ["timeout"], [], [], "failed"),
     (0, ["oom"], [], [], "failed"),
     (0, ["pids"], [], [], "failed"),
+    (0, ["pids_unmetered"], [], [], "no_expectation"),
+    (0, ["pids_unmetered"], ["hello"], [True], "passed"),
+    (1, ["pids_unmetered"], [], [], "failed"),
+    (None, ["pids_unmetered"], [], [], "failed"),
+    (0, ["timeout", "pids_unmetered"], [], [], "failed"),
     (None, [], [], [], "failed"),
     (0, [], ["hello"], [True], "passed"),
     (0, [], ["hello"], [False], "failed"),
@@ -22,6 +27,21 @@ def test_judgment(exit_code, limits, expectations, matched, status):
     step = Step(id=1, command="printf hello", expectations=[Expectation(kind="stdout", value=s, source_quote=s) for s in expectations])
     evidence = Evidence(command=step.command, exit_code=exit_code, limits=limits, matched=matched)
     assert judge(step, evidence)[0] == status
+
+
+def test_unmetered_is_not_reported_as_a_limit_hit():
+    step = Step(id=1, command="false")
+    evidence = Evidence(command=step.command, limits=["pids_unmetered"])
+    status, reason = judge(step, evidence)
+    assert status == "failed"
+    assert "could not be observed" in reason and "not metered" in reason
+    assert "limit reached" not in reason
+
+
+def test_ordinary_failure_under_gvisor_has_no_metering_note():
+    step = Step(id=1, command="python3 old_app.py")
+    status, reason = judge(step, Evidence(command=step.command, exit_code=2, limits=["pids_unmetered"]))
+    assert status == "failed" and reason == "Command exited with code 2"
 
 
 @pytest.mark.parametrize("command,status", [
@@ -73,3 +93,9 @@ def test_hostile_demo_exfiltration_is_not_mistaken_for_a_credential_request():
         decision = Decision(step_id=index, action="run", reason="Sandbox demo")
         assert classify(Step(id=index, command=command), decision).action == "run"
 
+
+
+@pytest.mark.parametrize("text", ['{"a": 1}', '```json\n{"a": 1}\n```', '```\n{"a": 1}```', '  {"a": 1}  '])
+def test_strip_fence_keeps_only_the_json_object(text):
+    from app.llm import strip_fence
+    assert strip_fence(text) == '{"a": 1}'

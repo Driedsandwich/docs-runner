@@ -1,4 +1,4 @@
-"""UI additions use the existing jobs/SSE endpoints and inert server fixtures."""
+"""UI additions use the existing jobs/SSE endpoints and explicitly enabled inert server fixtures."""
 import asyncio
 import json
 
@@ -22,6 +22,7 @@ async def settle(manager):
     ("hostile", ["passed", "passed", "failed", "needs_credential", "no_expectation", "unsupported"]),
 ])
 async def test_inert_fixture_contract_and_independent_next_job(settings, monkeypatch, fixture, expected):
+    settings.docsrunner_ui_fixtures = True
     monkeypatch.setattr(fixtures, "TICK", 0)
 
     class NeverFetch:
@@ -90,6 +91,7 @@ async def test_inert_fixture_contract_and_independent_next_job(settings, monkeyp
 
 
 async def test_fixture_validation_stylesheet_and_stop(settings, monkeypatch):
+    settings.docsrunner_ui_fixtures = True
     monkeypatch.setattr(fixtures, "TICK", 0.02)
     manager = JobManager(settings)
     app = create_app(settings, manager)
@@ -121,6 +123,7 @@ async def test_fixture_validation_stylesheet_and_stop(settings, monkeypatch):
 
 
 async def test_immediate_stop_finishes_without_claiming_created_sandbox(settings, monkeypatch):
+    settings.docsrunner_ui_fixtures = True
     monkeypatch.setattr(fixtures, "TICK", 0.02)
     manager = JobManager(settings)
     job = await manager.submit(fixtures.FIXTURE_URL, "client", fixture="good")
@@ -137,6 +140,7 @@ def test_presentation_metadata_is_redacted():
 
 
 async def test_stop_does_not_interrupt_cleanup(settings, monkeypatch):
+    settings.docsrunner_ui_fixtures = True
     monkeypatch.setattr(fixtures, "TICK", 0.02)
     manager = JobManager(settings)
     job = await manager.submit(fixtures.FIXTURE_URL, "client", fixture="good")

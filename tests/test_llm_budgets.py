@@ -99,3 +99,17 @@ def test_non_vultr_endpoint_rejected():
     with pytest.raises(ValidationError):
         Settings(vultr_inference_base_url="https://example.org/v1")
 
+
+
+async def test_diagnose_sees_job_steps_and_evidence_semantics(settings):
+    from app.models import Evidence, Step
+    answer = json.dumps({"category": "documentation", "explanation": "Renamed file", "suggested_command": "python3 app.py"})
+    llm, client = make(settings, ["```json\n" + answer + "\n```"])
+    step = Step(id=2, command="python3 old_app.py")
+    result = await llm.diagnose(step, Evidence(command=step.command, exit_code=2, limits=["pids_unmetered"]),
+                                ["printf 'print(1)' > app.py", "python3 old_app.py"])
+    assert result.category == "documentation" and result.suggested_command == "python3 app.py"
+    request = client.requests[0]
+    assert request["response_format"] == {"type": "json_object"}
+    assert json.loads(request["messages"][1]["content"])["untrusted_data"]["job_steps"][0].endswith("> app.py")
+    assert "never evidence that containment is missing" in request["messages"][0]["content"]

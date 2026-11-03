@@ -3,9 +3,9 @@ const $ = id => document.getElementById(id);
 const mobile = matchMedia("(max-width: 760px)");
 const names = {passed: "Passed", failed: "Failed", needs_credential: "Needs credential", no_expectation: "No expectation", unsupported: "Unsupported", pending: "Pending", running: "Running"};
 const symbols = {passed: "✓", failed: "×", needs_credential: "⚿", no_expectation: "?", unsupported: "╱", pending: "○", running: "◌"};
-const eventNames = {blocked_network: "Blocked network", killed_by_limit: "Killed by limit", injection_detected: "Injection detected", read_only_root: "Root read-only"};
+const eventNames = {blocked_network: "Blocked network", killed_by_limit: "Killed by limit", sandbox_stopped: "Stopped by runner", injection_detected: "Injection detected", read_only_root: "Root read-only"};
 const fixtureURL = "https://example.org/quickstart";
-let fixture = "stale", job = null, selected = null, selectionMade = false, stream = null, nextStream = null;
+let demo = "stale", fixture = null, demoURLs = {}, configReady = false, job = null, selected = null, selectionMade = false, stream = null, nextStream = null;
 let busy = false, submitting = false, stopRequested = false, revision = -1, generation = 0;
 let menuOpen = false, menuTrigger = null, eventIds = new Set(), evidenceKey = "", nextJobID = null, nextJob = null;
 let outputText = "", outputWrapped = true, refreshing = false, refreshAgain = false;
@@ -28,18 +28,34 @@ function notice(message, reconnect = false) { $("notice").hidden = !message; $("
 function announce(message) { if ($("live-status").textContent !== message) $("live-status").textContent = message; }
 function updateRunButton() {
   $("run-label").textContent = busy ? (stopRequested ? "Stopping…" : "Stop") : (job ? "Re-run" : "Run audit");
-  $("run").disabled = busy && stopRequested;
-  $("url").disabled = busy;
-  document.querySelectorAll("[data-demo]").forEach(b => { b.disabled = busy; b.setAttribute("aria-pressed", String(b.dataset.demo === fixture)); });
+  $("run").disabled = !configReady || (busy && stopRequested);
+  $("url").disabled = busy || !configReady;
+  $("preview").disabled = busy || !configReady;
+  document.querySelectorAll("[data-demo]").forEach(b => { b.disabled = busy || !configReady; b.setAttribute("aria-pressed", String(b.dataset.demo === demo)); });
 }
-function setFixture(value) {
-  fixture = value; $("url").value = fixtureURL;
-  $("mode-note").textContent = "Fixture playback. No commands or external requests are executed.";
+function setDemo(value) {
+  demo = value;
+  fixture = $("preview").checked ? value : null;
+  $("url").value = fixture ? fixtureURL : demoURLs[value];
+  $("mode-note").textContent = fixture ? "Preview data · No commands or external requests are executed." : "Live audit · Fetch → injection detection → extraction → Docker execution → verdict.";
   updateRunButton();
 }
-document.querySelectorAll("[data-demo]").forEach(b => b.addEventListener("click", () => setFixture(b.dataset.demo)));
+document.querySelectorAll("[data-demo]").forEach(b => b.addEventListener("click", () => setDemo(b.dataset.demo)));
+$("preview").addEventListener("change", () => setDemo(demo || "stale"));
+async function configure() {
+  try {
+    const response = await fetch("/api/config");
+    if (!response.ok) throw new Error("Could not load demo URLs. Reload to retry.");
+    const config = await response.json();
+    demoURLs = config.demo_urls;
+    $("preview-control").hidden = !config.ui_fixtures;
+    $("preview").checked = false;
+    configReady = true;
+    setDemo("stale");
+  } catch (error) { notice(error.message); }
+}
 $("url").addEventListener("input", () => {
-  fixture = null;
+  demo = null; fixture = null; $("preview").checked = false;
   $("mode-note").textContent = "Live audit. This URL uses the configured backend runner; its actual limits and evidence will be shown.";
   updateRunButton();
 });
@@ -101,7 +117,7 @@ function renderEvidence(value) {
   $("lifecycle").classList.toggle("accent", lifecycle === "destroyed");
   $("lifecycle").parentElement.parentElement.classList.toggle("busy", ["creating", "destroying"].includes(lifecycle));
   $("destroyed-time").textContent = lifecycle === "destroyed" ? time(detail.destroyed_at || p.destroyed_at) : "";
-  const signature = JSON.stringify([selected, item, result, detail, p.isolation, !result ? value.phase : null]);
+  const signature = JSON.stringify([selected, item, result, detail, p.isolation, p.sandbox_id, value.cleanup, value.llm_calls, !result ? value.phase : null]);
   if (signature === evidenceKey) return;
   evidenceKey = signature;
   const panel = node("article", "", "evidence-panel");
@@ -118,7 +134,9 @@ function renderEvidence(value) {
   addMetric(metrics, "Command", evidence?.command || item.command);
   addMetric(metrics, "Exit", evidence ? evidence.exit_code ?? "—" : "Not executed");
   addMetric(metrics, "Elapsed", evidence ? `${evidence.duration_seconds} s` : "Not executed");
-  addMetric(metrics, "Limit hit", evidence ? evidence.limits?.join(", ") || "none" : "—");
+  const reached = (evidence?.limits || []).filter(l => l !== "pids_unmetered");
+  addMetric(metrics, "Limit hit", evidence ? reached.join(", ") || "none" : "—");
+  if (evidence?.limits?.includes("pids_unmetered")) addMetric(metrics, "PID events", "Not metered under gVisor");
   body.append(metrics);
   const outputs = [];
   if (evidence) {
@@ -152,11 +170,13 @@ function renderEvidence(value) {
   details.append(node("summary", "Evidence provenance & all attempts"));
   const dl = node("dl");
   addMetric(dl, "Run ID", value.id); addMetric(dl, "Step ID", item.id);
-  addMetric(dl, "Sandbox ID", detail.sandbox_id || (value.runtime ? `docsrunner-job-${value.id}` : "Not created"));
+  addMetric(dl, "Sandbox ID", detail.sandbox_id || p.sandbox_id || (value.runtime ? "Not reported" : "Not created"));
   addMetric(dl, "Source line", detail.source_line ?? item.source_line ?? "Not reported");
   addMetric(dl, "Isolation", p.isolation || "Not reported");
   addMetric(dl, "Preparation", detail.preparation || "Not reported");
-  addMetric(dl, "Fixture", detail.fixture || "Not reported");
+  addMetric(dl, "Data", value.fixture ? `Preview data · ${value.fixture}` : "Live execution");
+  if (value.cleanup) addMetric(dl, "Cleanup", JSON.stringify(value.cleanup));
+  addMetric(dl, "LLM calls", value.llm_calls);
   addMetric(dl, "Stdout tail", evidence ? evidence.stdout || "(empty)" : "Not executed");
   addMetric(dl, "Stderr tail", evidence ? evidence.stderr || "(empty)" : "Not executed");
   details.append(dl, node("p", result?.reason || "No result yet."));
@@ -186,8 +206,8 @@ function renderEvents(value) {
     title.append(node("span", String(events.indexOf(event) + 1), "event-number"), node("h3", eventNames[event.kind] || event.kind));
     entry.append(title, node("p", event.detail, "event-description"), node("p", `${runLabel(value)} · ${time(event.observed_at).slice(11, 19)} UTC`, "event-run"));
     const details = node("details"); details.append(node("summary", "View boundary evidence")); const dl = node("dl");
-    addMetric(dl, "Run ID", event.run_id); addMetric(dl, "Probe ID", event.probe_id); addMetric(dl, "Boundary", event.boundary === "extraction" ? "Extraction trust boundary (not container detection)" : "Runtime sandbox boundary");
-    addMetric(dl, "Sandbox ID", event.sandbox_id || "Not created — extraction boundary"); addMetric(dl, "Observed", time(event.observed_at));
+    addMetric(dl, "Run ID", event.run_id); addMetric(dl, "Step ID", event.step_id); addMetric(dl, "Attempt", event.attempt); addMetric(dl, "Probe ID", event.probe_id); addMetric(dl, "Boundary", event.boundary === "extraction" ? "Extraction trust boundary (not container detection)" : "Runtime sandbox boundary");
+    addMetric(dl, "Sandbox ID", event.sandbox_id || (event.boundary === "extraction" ? "Not created — extraction boundary" : "Not reported")); addMetric(dl, "Evidence collected", time(event.observed_at));
     for (const [key, val] of Object.entries(event.evidence || {})) addMetric(dl, key.replaceAll("_", " "), val);
     details.append(dl); entry.append(details);
     if (event.boundary === "extraction") {
@@ -196,12 +216,12 @@ function renderEvents(value) {
     } else $("runtime-events").append(entry);
   }
   // Existing real jobs expose only these observations; do not invent missing probe evidence.
-  if (!value.fixture && value.injection?.injection_detected && !eventIds.has("legacy-injection")) {
+  if (!value.fixture && !events.some(e => e.kind === "injection_detected") && value.injection?.injection_detected && !eventIds.has("legacy-injection")) {
     eventIds.add("legacy-injection");
     $("extraction-events").append(node("h3", "Injection detected · extraction boundary", "extraction-heading"), node("p", value.injection.reason, "event-description"));
   }
   $("empty-events").hidden = events.some(e => e.boundary === "runtime");
-  if (!value.fixture && value.cleanup?.denied_destinations?.length) {
+  if (!value.fixture && !events.some(e => e.kind === "blocked_network") && value.cleanup?.denied_destinations?.length) {
     $("empty-events").textContent = `Blocked destinations reported at cleanup: ${value.cleanup.denied_destinations.join(", ")}. Event timestamps were not reported.`;
   } else $("empty-events").textContent = busy ? "Waiting for observed runtime events…" : "No runtime containment events observed.";
   if (added) {
@@ -246,10 +266,10 @@ function render(value, force = false) {
     selected = failed?.step.id || (plan.find(s => s.id === Number(value.phase.split(":")[1]))?.id) || selected || plan[0]?.id;
   }
   $("headline").textContent = value.error ? (value.state === "cancelled" ? "Stopped. Evidence preserved." : "The audit needs attention.") : value.fixture && (p.containment_events?.length || value.phase === "finished") ? "The boundary holds." : "Tracing the boundary.";
-  $("run-context").textContent = `${value.fixture ? "DEMO FIXTURE" : "LIVE AUDIT"} · ${runLabel(value)}`;
+  $("run-context").textContent = `${value.fixture ? "Preview data" : "LIVE AUDIT"} · ${runLabel(value)}`;
   $("observed-time").textContent = time(p.destroyed_at || value.created_at);
   $("source-line").textContent = `Source: ${value.url}  |  ${plan.length} extracted steps`;
-  $("fixture-disclosure").textContent = value.fixture ? `DEMO FIXTURE · ${value.fixture} · Simulated evidence. No network access, LLM calls, or command execution.` : "LIVE AUDIT · Evidence and execution limits reported by the configured backend.";
+  $("fixture-disclosure").textContent = value.fixture ? `Preview data · ${value.fixture} · Simulated evidence. No network access, LLM calls, or command execution.` : "LIVE AUDIT · Evidence and execution limits reported by the configured backend.";
   const l = p.limits;
   for (const [id, val] of Object.entries({"limit-cpu": l?.cpus, "limit-memory": l ? `${l.memory_mib} MiB` : null, "limit-time": l ? `${l.seconds} s` : null, "limit-pids": l?.pids})) $(id).textContent = val ?? "—";
   notice(value.error || ""); renderResults(value); renderSteps(value); renderEvidence(value); renderEvents(value);
@@ -295,6 +315,7 @@ async function stop() {
   } catch (e) { stopRequested = false; updateRunButton(); notice(e.message, true); }
 }
 async function start() {
+  if (!configReady) return;
   const previousJob = job;
   let rejected = false;
   const token = ++generation;
@@ -381,4 +402,4 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("focusin", e => { if (menuOpen && !$("controls").contains(e.target)) $("close-menu").focus(); });
 mobile.addEventListener("change", () => { if (!mobile.matches) closeMenu(); placeControls(); });
-placeControls(); updateRunButton();
+placeControls(); updateRunButton(); configure();

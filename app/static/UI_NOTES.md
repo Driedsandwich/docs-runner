@@ -2,71 +2,62 @@
 
 ## Running
 
-Start the existing FastAPI application (`uvicorn app.main:app`). Open `/`, select
-`good`, `stale` or `hostile`, then choose **Run audit**. Selection alone does not
-start a job. No CDN, frontend package manager or build step is required.
+Start the FastAPI app and open `/`. Select `good`, `stale` or `hostile`, then
+**Run audit**. Selection alone does not start a job. The default sample is
+`stale`. All three submit the public `/demo-docs/<name>` URLs from `/api/config`,
+derived from `DOCSRUNNER_PUBLIC_ORIGIN`, with no fixture field. They use the
+ordinary HTTP fetch, injection guard, extraction, classification, Docker runner
+and judgment pipeline. Docker and Vultr settings are required; see
+[VM setup](../../deploy/README.md). There is no local-file or simulated fallback.
 
-The default selection is `stale`. These three fixtures use the reserved URL
-`https://example.org/quickstart`. The server replays inert, explicitly simulated
-evidence through the existing jobs and SSE endpoints. It never calls the fetcher,
-LLM, Docker, or a shell for fixture playback. Commands, including hostile probes,
-are strings only. The follow-up is one separate, inert fixture job with its own
-API ID; it does not recursively launch additional jobs. Labels begin at R-1042
-per server process, while actual API IDs remain unique.
+Editing the URL uses the same live pipeline. The A3 layout, evidence panels,
+containment column, lifecycle animation, stop and reconnect behavior are shared.
+Live jobs use one sandbox per job, shared across steps, with actual runner limits
+(512 MiB, 128 PIDs, 1 CPU, configured step timeout). Retries appear separately;
+the original failure remains failed. Missing source lines/metrics are not invented.
 
-Editing the URL clears fixture selection and uses the existing live-audit API.
-The mode note identifies this change. A live audit still requires the deployment's
-existing runner and model configuration. No live audits were used in UI validation.
+## Development preview only
 
-## Additive API fields
+`DOCSRUNNER_UI_FIXTURES=1 uvicorn app.main:app` enables an optional **Preview data**
+checkbox. It is unchecked by default. Only after explicitly checking it do sample
+buttons submit inert fixtures. The mode note, run header and evidence disclosure
+say **Preview data**. Public deployments must leave this setting unset or `0`.
+The API rejects fixture requests with HTTP 403 when disabled, and the manager
+also rejects direct playback submission. Preview playback does not fetch, call
+models or Docker, and launches at most one independent inert follow-up fixture.
+Live jobs never launch a pretend follow-up; run another audit to observe recovery.
 
-- `POST /api/jobs`: optional `fixture: good | stale | hostile`. Fixture requests
-  must use the reserved fixture URL; normal URL submissions retain existing behavior.
-- `GET /api/jobs/{id}`: `fixture`, `created_at`, `revision`, and `presentation`
-  (plan, display labels, configured limits, evidence provenance, lifecycle,
-  containment observations, and optional `next_job_id`).
-- `GET /api/jobs/{id}/events`: same `progress` event and event IDs. Fixture events
-  additionally include frozen snapshots, so replay does not collapse distinct
-  observations or mutate prior evidence. Real-job progress still refreshes via GET.
-- `POST /api/jobs/{id}/stop`: cancels the job, retaining results and waiting for
-  cleanup. Repeated stop requests do not interrupt cleanup. Uses the existing
-  origin validation and reports missing jobs as 404.
-- `/styles.css`: same-origin stylesheet, covered by existing security headers.
+## API and observations
 
-The original failed result remains failed after a proposed fix. Existing live
-repair attempts are shown separately and are never labelled “Not applied”.
-Health counts original passed/failed results; unverified and pending results are
-not counted as successes. Containment events do not affect health or coverage.
+- `GET /api/config`: public demo URLs and whether UI preview is enabled. No keys.
+- `POST /api/jobs`: normal `{url}`. Optional `fixture: good | stale | hostile`
+  requires preview opt-in and the reserved `https://example.org/quickstart` URL.
+- `GET /api/jobs/{id}`: actual steps, attempts, runtime, call count, cleanup and
+  presentation metadata. Fixture jobs have `fixture` set and `simulated: true`.
+- SSE `progress` events contain frozen snapshots for both live and preview jobs.
+  Reconnect preserves observations and state transitions; values are redacted
+  before delivery, including snapshots.
+- `POST /api/jobs/{id}/stop`: preserves captured evidence and awaits cleanup.
+  Repeated stop requests do not interrupt cleanup.
 
-## Deliberate differences from the visual reference
-
-- System sans and system mono fonts replace IBM Plex; no downloadable fonts.
-- Injection detection appears at the extraction boundary on the left, as required
-  by the written contract, rather than among runtime container detections.
-- Mobile rows and controls are at least 44px high, so the page is taller than the
-  compact visual mockup. Evidence provenance and event details can be expanded.
-- IDs and timestamps come from the API. The next job actually changes to completed;
-  it is never frozen at “Running” for appearance.
-- Live runner behavior is retained: it shares one sandbox across steps and uses
-  512 MiB / 128 PIDs / its configured timeout. The UI states this in provenance
-  and displays these actual limits. Only the inert fixtures model separate
-  per-step sandboxes at 256 MiB / 64 PIDs / 30 s. Missing live source-line,
-  preparation, and per-event telemetry is explicitly “Not reported”, never invented.
-- Fixture playback demonstrates UI state transitions, not Docker enforcement.
-  Real Docker validation remains the existing opt-in test suite.
+Injection events contain the guard result and belong to the extraction boundary.
+Limit events contain the runner's exact attempt evidence. A read-only event is
+added only when a failing attempt's stderr reports “Read-only file system”; a
+command's destructive name or GNU rm's root guard is not sufficient evidence.
+Network events are derived from denied destinations in the proxy cleanup log.
+Their timestamps mean evidence collection, not the instant of the request.
+Audit completeness and unavailable metrics remain visible in the evidence.
+Containment observations do not contribute to the doc-health score.
 
 ## Verification
 
-`pytest -q` covers old behavior plus fixture validation, inertness, evidence,
-independent follow-up jobs, SSE snapshots/replay, stop, redaction, CSS serving,
-and cleanup protection. Existing tests are unchanged.
+`pytest -q` covers preview opt-in/inertness, live sample routing through served
+HTML and the ordinary pipeline, DNS/redirect checks, real-data event projection,
+SSE replay/redaction, stop and cleanup. Model and runner doubles are test-only;
+Docker enforcement remains the opt-in suite in `tests/test_docker.py`.
 
-For optional local headless checks install the Python `playwright` package and
-its Chromium browser in a development environment, start the local server, then
-run `python scripts/validate_ui.py`. This script only permits localhost requests.
-It writes screenshots and `ui-validation.json` under `artifacts/`. Playwright is
-not an application dependency and introduces no frontend build step.
-
-The browser checks cover 1440px, 390px, a 310px menu, keyboard trap/return,
-copy/wrap/output dialog, SSE observation order/reconnect, stop, empty/loading/error,
-15 steps, long URLs/output, zero verified steps, reduced motion and contrast.
+For optional developer visual checks, enable preview on the local server, install
+Playwright in the development environment and run `python scripts/validate_ui.py`.
+The script explicitly selects **Preview data** and permits only localhost browser
+requests. It writes to `artifacts/`. This checks presentation, not real execution.
+No browser tools were used for the real-demo change.

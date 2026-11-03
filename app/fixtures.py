@@ -1,4 +1,7 @@
-"""Inert, explicitly simulated UI fixtures. No fetcher, model or runner is used."""
+"""UI development only: gated by DOCSRUNNER_UI_FIXTURES (off by default).
+
+Inert Preview data; no fetcher, model or runner is used.
+"""
 import asyncio
 import time
 

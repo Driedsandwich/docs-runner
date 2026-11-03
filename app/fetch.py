@@ -113,11 +113,7 @@ class Fetcher:
         raise FetchError("Too many robots.txt redirects")
 
     async def fetch(self, url: str) -> Document:
-        # Exact bundled fixtures only: never make an exception for arbitrary local HTTP.
-        for name in ("good", "stale", "hostile"):
-            if url == f"{self.public_origin}/demo-docs/{name}":
-                raw = (DEMO_DIR / f"{name}.html").read_text()
-                return Document(url, "", raw, extract_body(raw, "text/html"), True)
+        # Bundled demo URLs use the same robots, DNS, HTTP and redirect checks.
         current = validate_url(url)
         async with asyncio.timeout(40):
             for _ in range(5):

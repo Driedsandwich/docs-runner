@@ -40,8 +40,8 @@ class Job:
     presentation: dict = field(default_factory=dict)
     changed: asyncio.Condition = field(default_factory=asyncio.Condition)
 
-    def public(self, secret=""):
-        data = {"id": self.id, "url": self.url, "state": self.state, "phase": self.phase,
+    def public(self, secret="", *, data=None):
+        data = data if data is not None else {"id": self.id, "url": self.url, "state": self.state, "phase": self.phase,
                 "injection": self.injection, "steps": [s.model_dump() for s in self.steps],
                 "error": self.error, "llm_calls": self.llm_calls, "runtime": self.runtime, "cleanup": self.cleanup,
                 "fixture": self.fixture, "presentation": self.presentation, "created_at": self.created_at, "revision": len(self.events)}
@@ -56,14 +56,37 @@ class Job:
             return value
         return clean(data)
 
+    def observe(self, kind, detail, evidence, *, step_id=None, attempt=None, boundary="runtime"):
+        events = self.presentation.setdefault("containment_events", [])
+        events.append({
+            "id": f"{self.id}:{len(events) + 1}", "kind": kind, "detail": detail,
+            "run_id": self.id, "step_id": step_id, "attempt": attempt,
+            "boundary": boundary, "observed_at": time.time(),
+            "sandbox_id": self.presentation.get("sandbox_id") if boundary == "runtime" else None,
+            "evidence": evidence,
+        })
+
+    def observe_attempt(self, step_id, attempt, evidence):
+        # pids_unmetered is a visibility note on every gVisor step, not a limit hit.
+        if evidence.reached_limits:
+            self.observe("killed_by_limit", "Runner reported a resource or time limit and stopped the sandbox.",
+                         evidence.model_dump(), step_id=step_id, attempt=attempt)
+        elif evidence.exit_code is None:
+            detail = "The runner lost its probe of the sandbox during this step and stopped the sandbox."
+            if "pids_unmetered" in evidence.limits:
+                detail += " gVisor PID-limit events are not metered here, so the cause is not asserted."
+            self.observe("sandbox_stopped", detail, evidence.model_dump(), step_id=step_id, attempt=attempt)
+        if "read-only file system" in evidence.stderr.lower() and evidence.exit_code != 0:
+            self.observe("read_only_root", "Command stderr reports a read-only filesystem error.",
+                         evidence.model_dump(), step_id=step_id, attempt=attempt)
+
     async def emit(self, phase: str):
         self.phase = phase
         async with self.changed:
             event = {"id": len(self.events) + 1, "phase": phase, "state": self.state}
-            if self.fixture:
-                # Freeze snapshots so reconnect/replay preserves every observed transition.
-                event["snapshot"] = json.loads(json.dumps(self.public()))
-                event["snapshot"]["revision"] = event["id"]
+            # Freeze real observations too, preserving intermediate states on replay.
+            event["snapshot"] = self.public()
+            event["snapshot"]["revision"] = event["id"]
             self.events.append(event)
             self.changed.notify_all()
 
@@ -81,6 +104,8 @@ class JobManager:
         self.fixture_sequence = 1042
 
     async def submit(self, url: str, address: str, fixture: str | None = None) -> Job:
+        if fixture and not self.settings.docsrunner_ui_fixtures:
+            raise ValueError("Preview data is disabled")
         async with self.lock:
             if len(self.tasks) >= 2:
                 raise Busy("Two jobs are already running")
@@ -134,7 +159,8 @@ class JobManager:
                 job.state = "running"
                 job.presentation = {"simulated": False, "label": job.id,
                                     "limits": {"cpus": 1, "memory_mib": 512, "seconds": self.settings.docsrunner_step_seconds, "pids": 128},
-                                    "isolation": "Shared sandbox across steps (existing runner)", "no_secrets": True}
+                                    "isolation": "One disposable sandbox shared across this job's steps", "no_secrets": True,
+                                    "lifecycle": "not_created", "containment_events": []}
                 await job.emit("fetching")
                 document = await self.fetcher.fetch(job.url)
                 secret = self.settings.vultr_inference_key.get_secret_value()
@@ -142,6 +168,8 @@ class JobManager:
                 llm = self.llm_factory()
                 await job.emit("guarding")
                 job.injection = (await llm.guard(raw)).model_dump()
+                if job.injection["injection_detected"]:
+                    job.observe("injection_detected", job.injection["reason"], job.injection.copy(), boundary="extraction")
                 await job.emit("extracting")
                 plan = await llm.extract(body)
                 if len(plan.steps) > self.settings.docsrunner_max_steps:
@@ -165,11 +193,14 @@ class JobManager:
                     else:
                         if runner is None:
                             runner = self.runner_factory(job.id)
+                            job.presentation["lifecycle"] = "creating"
                             await job.emit("starting_sandbox")
                             await runner.start(document.domain)
                             job.runtime = runner.runtime
+                            job.presentation.update(lifecycle="isolated", sandbox_id=getattr(runner, "name", None))
                         await job.emit(f"running:{step.id}")
                         evidence = await runner.run(step, self.settings.docsrunner_step_seconds)
+                        job.observe_attempt(step.id, 1, evidence)
                         status, reason = judge(step, evidence)
                         result = StepResult(step=step, status=status, reason=reason,
                                             attempts=[Attempt(evidence=evidence, status=status, reason=reason)])
@@ -177,7 +208,7 @@ class JobManager:
                         job.steps.append(result)
                         if status == "failed":
                             await job.emit(f"diagnosing:{step.id}")
-                            result.diagnosis = await llm.diagnose(step, evidence)
+                            result.diagnosis = await llm.diagnose(step, evidence, [s.command for s in plan.steps])
                             command = result.diagnosis.suggested_command
                             if command and runner.alive:
                                 repaired = step.model_copy(update={"command": command, "depends_on": []})
@@ -192,6 +223,7 @@ class JobManager:
                                     if repair_decision.action == "run":
                                         await job.emit(f"retrying:{step.id}")
                                         retry = await runner.run(repaired, self.settings.docsrunner_step_seconds)
+                                        job.observe_attempt(step.id, 2, retry)
                                         retry_status, retry_reason = judge(step, retry)
                                         result.attempts.append(Attempt(evidence=retry, status=retry_status, reason=retry_reason))
                                         result.retry_status = retry_status
@@ -222,10 +254,20 @@ class JobManager:
             job.state, job.error = "failed", "Processing failed; check configuration or document format"
         finally:
             job.llm_calls = llm.calls if llm else 0
+            if runner is not None:
+                job.presentation["lifecycle"] = "destroying"
             await job.emit("cleaning_up")
             if runner is not None:
                 try:
                     job.cleanup = dataclasses.asdict(await runner.cleanup())
+                    if getattr(runner, "created", None) is False:
+                        job.cleanup["not_created"] = True
+                    elif getattr(runner, "created", None):
+                        job.presentation["sandbox_id"] = runner.name
+                    for destination in job.cleanup.get("denied_destinations") or []:
+                        job.observe("blocked_network", "Proxy denial log collected during cleanup; request time was not recorded.",
+                                    {"destination": destination, "source": "proxy denial log",
+                                     "audit_complete": job.cleanup.get("audit_complete", False)})
                     if not all(job.cleanup.get(k) for k in ("sandbox_removed", "proxy_removed", "network_removed")):
                         job.state, job.error = "failed", "Cleanup incomplete; VM operator must remove managed resources"
                 except Exception:
@@ -236,6 +278,8 @@ class JobManager:
                                "network_removed": True, "denied_destinations": [], "audit_complete": True}
             if job.cleanup.get("sandbox_removed") and not job.cleanup.get("not_created"):
                 job.presentation["destroyed_at"] = time.time()
+            job.presentation["lifecycle"] = ("not_created" if job.cleanup.get("not_created") else
+                                             "destroyed" if job.cleanup.get("sandbox_removed") else "unconfirmed")
             if llm:
                 try:
                     await llm.close()
@@ -265,7 +309,8 @@ class JobManager:
                 yield ": heartbeat\n\n"
             for event in pending:
                 after = event["id"]
-                yield f"id: {after}\nevent: progress\ndata: {json.dumps(event)}\n\n"
+                safe_event = job.public(self.settings.vultr_inference_key.get_secret_value(), data=event)
+                yield f"id: {after}\nevent: progress\ndata: {json.dumps(safe_event)}\n\n"
             if job.phase == "finished":
                 return
 

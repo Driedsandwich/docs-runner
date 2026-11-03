@@ -25,25 +25,26 @@
       <div id="input-controls">
         <form id="job-form">
           <label for="url">Source URL <span class="sr-only">Public README or quickstart</span></label>
-          <input id="url" type="url" maxlength="2048" required value="https://example.org/quickstart" autocomplete="off" spellcheck="false">
-          <button id="run" class="primary" type="submit"><span aria-hidden="true">▶</span> <span id="run-label">Run audit</span></button>
+          <input id="url" type="url" maxlength="2048" required disabled autocomplete="off" spellcheck="false">
+          <button id="run" class="primary" type="submit" disabled><span aria-hidden="true">▶</span> <span id="run-label">Run audit</span></button>
         </form>
-        <fieldset class="fixtures"><legend>Sample (fixture)</legend>
+        <fieldset class="fixtures"><legend>Sample (live audit)</legend>
           <button type="button" data-demo="good" aria-pressed="false"><span class="fixture-icon" aria-hidden="true">✓</span><span>good<small>Expected and passes</small></span></button>
           <button type="button" data-demo="stale" aria-pressed="true"><span class="fixture-icon" aria-hidden="true">◷</span><span>stale<small>Outdated or uncertain</small></span></button>
           <button type="button" data-demo="hostile" aria-pressed="false"><span class="fixture-icon" aria-hidden="true">×</span><span>hostile<small>Unsafe or policy violation</small></span></button>
         </fieldset>
-        <p id="mode-note" class="input-note">Fixture playback. No commands or external requests are executed.</p>
+        <label id="preview-control" hidden><input id="preview" type="checkbox"> Preview data (UI development only)</label>
+        <p id="mode-note" class="input-note">Loading public demo URLs…</p>
       </div>
     </div>
-    <div class="sidebar-bottom"><h2>Execution limits</h2><dl class="limits-list"><div><dt>CPU</dt><dd id="limit-cpu">—</dd></div><div><dt>Memory</dt><dd id="limit-memory">—</dd></div><div><dt>Step timeout</dt><dd id="limit-time">—</dd></div><div><dt>Processes</dt><dd id="limit-pids">—</dd></div></dl><p><span aria-hidden="true">▣</span> <strong>No secrets</strong></p><p class="muted">Fixtures never use credentials, tokens, or private data.</p></div>
+    <div class="sidebar-bottom"><h2>Execution limits</h2><dl class="limits-list"><div><dt>CPU</dt><dd id="limit-cpu">—</dd></div><div><dt>Memory</dt><dd id="limit-memory">—</dd></div><div><dt>Step timeout</dt><dd id="limit-time">—</dd></div><div><dt>Processes</dt><dd id="limit-pids">—</dd></div></dl><p><span aria-hidden="true">▣</span> <strong>No secrets</strong></p><p class="muted">Sandbox commands receive no controller credentials.</p></div>
   </aside>
   <main id="main" tabindex="-1">
-    <header class="masthead"><span class="desktop-title">A3 CONTAINMENT MAP</span><span class="mobile-brand">Docs Runner</span><span id="run-context">DEMO FIXTURE</span><time id="observed-time"></time><button class="menu-button" data-menu aria-label="Open menu" aria-expanded="false">☰</button></header>
+    <header class="masthead"><span class="desktop-title">A3 CONTAINMENT MAP</span><span class="mobile-brand">Docs Runner</span><span id="run-context">LIVE AUDIT</span><time id="observed-time"></time><button class="menu-button" data-menu aria-label="Open menu" aria-expanded="false">☰</button></header>
     <div id="mobile-controls"></div>
     <section class="intro" aria-labelledby="headline">
       <h1 id="headline">A boundary for every step.</h1>
-      <p id="summary-line">Choose a fixture, then run an audit.</p>
+      <p id="summary-line">Choose a sample, then run an audit.</p>
       <p class="source-line" id="source-line">Public documentation. Observable evidence. Independent steps.</p>
     </section>
     <div id="notice" role="alert" hidden><span id="notice-text"></span><button id="retry-connection" class="text-button" hidden>Reconnect</button></div>
@@ -59,7 +60,7 @@
         <div class="corner tl" aria-hidden="true"></div><div class="corner tr" aria-hidden="true"></div><div class="corner bl" aria-hidden="true"></div><div class="corner br" aria-hidden="true"></div>
         <header class="sandbox-heading"><h2 id="sandbox-heading">SANDBOX</h2><span id="sandbox-step" class="muted">NO ACTIVE STEP</span></header>
         <div id="sandbox-labels" class="sandbox-labels"><span class="tag">No active sandbox</span></div>
-        <div id="evidence"><div class="empty-evidence"><span aria-hidden="true">◇</span><h3>No active sandbox</h3><p>Run a fixture to trace each step through its own boundary.</p><p class="muted">Evidence stays available after the sandbox is destroyed.</p></div></div>
+        <div id="evidence"><div class="empty-evidence"><span aria-hidden="true">◇</span><h3>No active sandbox</h3><p>Run an audit to trace documented steps through a disposable sandbox.</p><p class="muted">Evidence stays available after the sandbox is destroyed.</p></div></div>
         <div class="lifecycle"><span class="mono">SANDBOX LIFECYCLE</span><div><span id="lifecycle" class="tag">Not created</span><time id="destroyed-time"></time></div></div>
       </section>
       <section id="events-region" class="events-region" aria-labelledby="events-heading">
@@ -72,7 +73,7 @@
       <div id="next-job" class="next-job"><h2>Ready for an independent run.</h2><p class="muted">The next job gets its own sandbox and evidence.</p></div>
       <div class="results"><h2 id="results-title" class="section-label">AUDIT RESULTS</h2><div id="result-counts" class="result-counts"><span>✓ 0 passed</span><span>× 0 failed</span><span>⊖ 0 unverified</span></div><div class="score-row"><strong id="score" class="score">Doc health: —</strong><span id="verified">Not scored</span></div><p id="coverage">Coverage: 0/0</p><p class="score-note">Scores verified steps only; not a guarantee of document completeness or isolation safety.</p></div>
     </section>
-    <p id="fixture-disclosure" class="fixture-disclosure">DEMO FIXTURE · Simulated evidence, real UI lifecycle. No commands are executed.</p>
+    <p id="fixture-disclosure" class="fixture-disclosure">LIVE AUDIT · Real execution evidence from the configured backend.</p>
   </main>
   <footer><span>Docs Runner <span class="footer-separator">|</span> A3 Containment Map</span><span>Evidence at every boundary.</span></footer>
   <dialog id="output-dialog" aria-labelledby="output-title"><header><h2 id="output-title">Captured output</h2><button id="close-output">Close ×</button></header><p class="muted">Complete captured tails provided by the API; upstream output may be truncated.</p><pre id="full-output" tabindex="0"></pre></dialog>

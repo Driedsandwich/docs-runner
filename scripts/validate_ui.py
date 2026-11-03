@@ -20,6 +20,12 @@ def contrast(a, b):
     return round((y + .05) / (x + .05), 2)
 
 
+async def enable_preview(page):
+    await expect(page.locator("#preview-control")).to_be_visible()
+    await page.locator("#preview").check()
+    await expect(page.locator("#mode-note")).to_contain_text("Preview data")
+
+
 async def main():
     report = {"checks": [], "console_errors": [], "external_requests": [], "contrast": {}}
     def passed(text):
@@ -40,6 +46,7 @@ async def main():
         submitted = []
         page.on("request", lambda req: submitted.append(req.url) if req.method == "POST" and req.url.endswith("/api/jobs") else None)
         await page.goto("http://localhost:8000/")
+        await enable_preview(page)
         await expect(page.locator("#headline")).to_have_text("A boundary for every step.")
         await expect(page.locator("#score")).to_have_text("Doc health: —")
         await page.screenshot(path=str(OUT / "desktop-empty.png"), full_page=True)
@@ -158,6 +165,7 @@ async def main():
         await expect(page.locator("#coverage")).to_have_text("Coverage: 0/3")
         passed("Zero verified steps shows Not scored / — / Coverage 0/3, never a success score.")
         await page.reload()
+        await enable_preview(page)
         await page.locator("#run").click()
         await expect(page.locator("#run-label")).to_have_text("Stop")
         await page.locator("#run").click()
@@ -180,6 +188,7 @@ async def main():
         reconnect = await context.new_page()
         reconnect.on("pageerror", lambda error: report["console_errors"].append(str(error)))
         await reconnect.goto("http://localhost:8000/")
+        await enable_preview(reconnect)
         await reconnect.locator('[data-demo="hostile"]').click()
         await reconnect.locator("#run").click()
         await reconnect.wait_for_function("() => document.querySelectorAll('.containment-event').length === 1")

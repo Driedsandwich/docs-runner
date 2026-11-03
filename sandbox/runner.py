@@ -156,6 +156,11 @@ class DockerRunner:
             pass
 
     async def process_limit_reached(self):
+        # runsc's host tasks and guest processes are different populations.
+        # A Docker stats gauge is not evidence of a guest PID limit event, and
+        # a low/zero value after sandbox death cannot rule out an earlier hit.
+        if self.runtime == "runsc":
+            return False
         try:
             # Host-side Docker stats still work when an exhausted cgroup cannot exec a probe.
             count = await docker("stats", "--no-stream", "--format", "{{.PIDs}}", self.name, timeout=3)
@@ -213,11 +218,16 @@ class DockerRunner:
             if state.get("OOMKilled"):
                 limits.append("oom")
             self.alive = self.alive and state.get("Running", False)
-        except SandboxError:
+        except (SandboxError, TimeoutError, json.JSONDecodeError):
             self.alive = False
         metric_pairs = (("memory.events", "oom_kill", "oom"), ("pids.events", "max", "pids"))
         metrics_available = True
         for source, key, name in metric_pairs:
+            if self.runtime == "runsc" and name == "pids":
+                # The guest cgroup is not the host cgroup enforcing Docker's
+                # limit. Do not promote guest counters into host evidence.
+                metrics_available = False
+                continue
             a, b = before["counters"].get(source), after["counters"].get(source)
             if not a or not b:
                 metrics_available = False
@@ -225,6 +235,12 @@ class DockerRunner:
                 limits.append(name)
         if limits:
             await self.stop()
+        if self.runtime == "runsc":
+            # This deployment exposes the Docker socket, not host cgroups or
+            # runsc state. No reliable PID event source is available through
+            # the current adapter. Record that even on successful steps;
+            # missing telemetry alone must neither fail nor stop a good job.
+            limits.append("pids_unmetered")
         matched = [False] * len(step.expectations)
         for indices, capture in ((out_indices, out), (err_indices, err)):
             for i, value in zip(indices, capture.matches):

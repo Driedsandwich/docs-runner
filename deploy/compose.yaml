@@ -7,6 +7,7 @@ services:
     restart: unless-stopped
     env_file: ../.env
     environment:
+      DOCSRUNNER_PUBLIC_ORIGIN: ${DOCSRUNNER_PUBLIC_ORIGIN:?Set DOCSRUNNER_PUBLIC_ORIGIN to the public HTTPS origin in .env}
       DOCSRUNNER_DB: /data/budgets.sqlite3
       DOCSRUNNER_EGRESS_NETWORK: docsrunner-egress
     volumes:

@@ -13,7 +13,7 @@ import pytest
 import pytest_asyncio
 
 from app.config import Settings
-from app.fetch import DEMO_DIR
+from app.fetch import DEMO_DIR, Fetcher
 from app.jobs import JobManager
 from app.models import Expectation, Guard, Plan, Step
 from conftest import FakeLLM
@@ -156,7 +156,7 @@ async def test_proxy_denial_direct_network_and_next_job(make_runner, run_step, c
     await runner.start("")
     for step_id, domain in enumerate(("example.com", "blocked.invalid"), 1):
         denied = await run_step(runner, Step(id=step_id, command=f"curl -fsS https://{domain}/"), 10)
-        assert denied.exit_code == 22 and not denied.limits
+        assert denied.exit_code == 22 and not denied.reached_limits
         assert "403" in denied.stderr
     direct = await run_step(runner, Step(id=3, command="/usr/bin/curl.real --noproxy '*' --connect-timeout 2 http://1.1.1.1/"), 5)
     assert direct.exit_code != 0
@@ -184,14 +184,33 @@ async def test_timeout_kills_descendants(make_runner, run_step, command):
     assert not state["Running"]
 
 
+def assert_process_exhaustion_evidence(result, runtime):
+    assert result.command == ":(){ :|:& }; :"
+    if runtime == "runsc":
+        # We test containment, NOT proven PID-limit enforcement in gVisor.
+        # This adapter has no trustworthy host PID event source for runsc.
+        assert "pids_unmetered" in result.limits
+        assert "pids" not in result.limits
+        assert result.metrics_available is False
+        # A successful command with just the visibility annotation must fail
+        # this test. Require abnormal/unobservable completion or a deadline.
+        assert result.exit_code != 0 or "timeout" in result.limits
+    else:
+        assert "pids_unmetered" not in result.limits
+        assert {"pids", "timeout"} & set(result.limits)
+    assert result.duration_seconds < 25
+
+
 async def test_process_exhaustion_is_contained(make_runner, run_step):
     runner = make_runner()
     await runner.start("")
     started = time.monotonic()
     result = await run_step(runner, Step(id=1, command=":(){ :|:& }; :"), 3)
-    assert {"pids", "timeout"} & set(result.limits)
+    assert_process_exhaustion_evidence(result, runner.runtime)
     assert not runner.alive
     assert time.monotonic() - started < 25
+    state = json.loads(await docker("inspect", "--format", "{{json .State}}", runner.name))
+    assert state["Running"] is False
     # Exercise another real sandbox through the same surviving control process.
     fresh = make_runner()
     await fresh.start("")
@@ -223,7 +242,7 @@ async def test_hostile_script_and_root_deletion_are_contained(make_runner, run_s
     # GNU rm's default root guard alone does not exercise filesystem isolation.
     for step_id, command in enumerate(("rm -rf /", "rm -rf --no-preserve-root /"), 3):
         result = await run_step(runner, Step(id=step_id, command=command), 3)
-        assert result.exit_code != 0 or result.limits
+        assert result.exit_code != 0 or result.reached_limits
         assert sentinel.read_text() == "host stays intact\n"
 
 
@@ -265,7 +284,7 @@ def demo_plan(name):
     return Plan(steps=steps)
 
 
-async def test_hostile_document_then_good_job(docker_settings, make_runner, record_property):
+async def test_hostile_document_then_good_job(docker_settings, make_runner, record_property, monkeypatch):
     docker_settings.docsrunner_step_seconds = 3
     llms = iter([DemoLLM(demo_plan("hostile")), DemoLLM(demo_plan("good"))])
     runners = {}
@@ -274,7 +293,20 @@ async def test_hostile_document_then_good_job(docker_settings, make_runner, reco
         runners[job_id] = make_runner(job_id)
         return runners[job_id]
 
-    manager = JobManager(docker_settings, llm_factory=lambda: next(llms), runner_factory=factory)
+    import httpx
+    from app.main import create_app
+
+    docker_settings.docsrunner_public_origin = "https://example.org"
+    fetcher = Fetcher(docker_settings.docsrunner_public_origin)
+    manager = JobManager(docker_settings, fetcher=fetcher, llm_factory=lambda: next(llms), runner_factory=factory)
+    app = create_app(docker_settings, manager)
+
+    async def served_document(url):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app)) as client:
+            response = await client.get(url)
+            return response.status_code, dict(response.headers), response.text
+
+    monkeypatch.setattr(fetcher, "request", served_document)
     try:
         jobs = []
         for name in ("hostile", "good"):
@@ -288,9 +320,16 @@ async def test_hostile_document_then_good_job(docker_settings, make_runner, reco
             await assert_removed(runners[job.id])
             jobs.append(job)
         hostile, good = jobs
+        assert hostile.fixture is None and hostile.presentation["simulated"] is False
         assert hostile.injection["injection_detected"]
+        kinds = {event["kind"] for event in hostile.presentation["containment_events"]}
+        assert {"injection_detected", "read_only_root", "blocked_network"} <= kinds
+        # gVisor PID events are unmetered: require the runner-stop event, not a claimed limit hit.
+        assert kinds & ({"killed_by_limit", "sandbox_stopped"} if hostile.runtime == "runsc" else {"killed_by_limit"})
+        assert hostile.presentation["sandbox_id"] == runners[hostile.id].name
+        assert not any(event["kind"] == "killed_by_limit" for event in good.presentation["containment_events"])
         assert [s.status for s in hostile.steps] == ["failed"] * 4
-        assert {"pids", "timeout"} & set(hostile.steps[-1].attempts[0].evidence.limits)
+        assert_process_exhaustion_evidence(hostile.steps[-1].attempts[0].evidence, hostile.runtime)
         assert "blocked.invalid" in hostile.cleanup["denied_destinations"]
         assert [s.status for s in good.steps] == ["passed", "passed", "no_expectation"]
         assert not good.injection["injection_detected"]
