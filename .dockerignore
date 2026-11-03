@@ -5,6 +5,8 @@
 .python
 .uv-cache
 .pytest_cache
+.tmp
+fix.patch
 __pycache__
 **/__pycache__
 *.egg-info

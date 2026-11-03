@@ -96,7 +96,10 @@ class DockerRunner:
         if int(version["Version"].split(".")[0]) < 28:
             raise SandboxError("Docker Engine 28 or newer is required")
         info = json.loads(await docker("info", "--format", "{{json .Runtimes}}"))
-        self.runtime = "runsc" if "runsc" in info else "runc"
+        requested = self.settings.docsrunner_runtime
+        self.runtime = ("runsc" if "runsc" in info else "runc") if requested == "auto" else requested
+        if self.runtime not in info:
+            raise SandboxError("Requested sandbox runtime is not registered")
         await docker("network", "create", "--internal", "--driver", "bridge",
                      "--opt", "com.docker.network.bridge.gateway_mode_ipv4=isolated",
                      "--label", "docsrunner.managed=true", self.network)

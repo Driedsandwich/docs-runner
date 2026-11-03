@@ -88,6 +88,41 @@ async def test_old_docker_fails_closed(monkeypatch, settings):
         await DockerRunner("test", settings).start("")
 
 
+@pytest.mark.parametrize("requested", ["runc", "runsc"])
+async def test_explicit_runtime_is_used(monkeypatch, settings, requested):
+    calls = []
+
+    async def fake(*args, **kwargs):
+        calls.append(args)
+        if args[0] == "version":
+            return b'{"Version":"28.0.1"}'
+        if args[0] == "info":
+            return b'{"runc":{},"runsc":{}}'
+        return b""
+
+    monkeypatch.setattr("sandbox.runner.docker", fake)
+    settings.docsrunner_runtime = requested
+    runner = DockerRunner("explicit", settings)
+    await runner.start("")
+    create = next(args for args in calls if args[:3] == ("create", "--name", runner.name))
+    assert create[create.index("--runtime") + 1] == requested
+    assert runner.runtime == requested
+
+
+async def test_missing_requested_runtime_fails_before_creating_resources(monkeypatch, settings):
+    calls = []
+
+    async def fake(*args, **kwargs):
+        calls.append(args)
+        return b'{"Version":"28.0.1"}' if args[0] == "version" else b'{"runc":{}}'
+
+    monkeypatch.setattr("sandbox.runner.docker", fake)
+    settings.docsrunner_runtime = "runsc"
+    with pytest.raises(SandboxError, match="runtime is not registered"):
+        await DockerRunner("missing", settings).start("")
+    assert [args[0] for args in calls] == ["version", "info"]
+
+
 async def test_daemon_failure_does_not_claim_cleanup(monkeypatch, settings):
     async def failed(*args, **kwargs):
         raise SandboxError("offline")

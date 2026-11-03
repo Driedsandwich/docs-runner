@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,6 +18,7 @@ class Settings(BaseSettings):
     docsrunner_sandbox_image: str = "docsrunner-sandbox:local"
     docsrunner_proxy_image: str = "docsrunner-proxy:local"
     docsrunner_egress_network: str = "docsrunner-egress"
+    docsrunner_runtime: Literal["auto", "runc", "runsc"] = "auto"
     docsrunner_job_seconds: float = Field(300, gt=0, le=300)
     docsrunner_step_seconds: float = Field(60, gt=0, le=60)
     docsrunner_max_steps: int = Field(15, ge=1, le=15)

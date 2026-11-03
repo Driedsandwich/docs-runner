@@ -7,6 +7,8 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.tmp/
+fix.patch
 *.egg-info/
 build/
 dist/

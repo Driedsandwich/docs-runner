@@ -56,6 +56,8 @@ docker info --format '{{json .Runtimes}}'
 
 The runner picks `runsc` when registered; otherwise it records `runc`. If runsc
 is registered but broken, jobs fail closed; there is no silent runtime fallback.
+`DOCSRUNNER_RUNTIME=auto` is the default. Set `runc` or `runsc` to select an
+explicit runtime; an unregistered runtime fails before creating any resources.
 **要確認**: chosen Vultr VM/kernel support, gVisor resource counter visibility,
 and performance of Python/npm. See [Docker quick start](https://gvisor.dev/docs/user_guide/quick_start/docker/).
 
@@ -65,14 +67,27 @@ and performance of Python/npm. See [Docker quick start](https://gvisor.dev/docs/
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.lock
 .venv/bin/pip install --no-deps -e .
-RUN_DOCKER_TESTS=1 .venv/bin/pytest -m docker -v
+RUN_DOCKER_TESTS=1 .venv/bin/python -m pytest -m docker -v \
+  -o junit_family=legacy --junitxml=docker-results.xml
 curl -fsS https://your-domain/healthz
 ```
 
 Run good → stale → hostile → good in the UI. Check original vs repaired evidence,
 injection flag, blocked domains, resource limits, cleanup and the next job's
-health. Test both runtimes where available. Integration tests deliberately build
-nothing: both images and `docsrunner-egress` must already exist.
+health. The integration suite builds sandbox and proxy images once per session,
+creates and removes its own egress network, and tests runc plus registered runsc.
+Missing runsc is reported as skipped; a broken registered runtime fails.
+Set `RUN_DOCKER_BUILD=0` to reuse already built images on subsequent test runs.
+Docker Engine 28+ and cgroup v2 are required. Without the Docker CLI the suite
+is skipped; an unreachable daemon, build failure or missing image is an error.
+The JUnit report includes runtime/image IDs, step evidence, job reports and cleanup
+results. All model responses are fixtures; no Vultr key or inference call is needed.
+Coverage includes a real denied domain (`example.com`), PyPI through the proxy,
+direct/metadata egress, CPU loops, fork exhaustion, OOM, root deletion (also with
+GNU rm's root guard disabled), and hostile → good bundled document jobs.
+All dangerous commands run only through Docker. Host filesystem checks use a
+temporary sentinel and verify the absence of bind mounts; they are not a proof
+against every possible container escape.
 
 Use a single Uvicorn worker. Active jobs/reports/SSE live in memory (1 hour,
 maximum 200 reports); daily UTC LLM and per-client hourly counters persist in
