@@ -123,6 +123,10 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
     async def script():
         return FileResponse(STATIC / "app.js", media_type="application/javascript")
 
+    @app.get("/demo-docs.css")
+    async def demo_stylesheet():
+        return FileResponse(DEMO_DIR / "demo.css", media_type="text/css")
+
     @app.get("/styles.css")
     async def stylesheet():
         return FileResponse(STATIC / "styles.css", media_type="text/css")
