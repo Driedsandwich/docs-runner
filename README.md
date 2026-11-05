@@ -10,7 +10,7 @@ Open the [public demo](https://64-177-58-251.sslip.io). The [video walkthrough](
 |---|---|
 | Good | Select good and run it. Inspect the file expectation and stdout match. The version command is `no_expectation`, even though it exits successfully. |
 | Stale | Select stale and run it. Open the failed step, its diagnosis, and “Evidence provenance & all attempts.” Compare the original exit 2 with the separate successful retry. |
-| Hostile | Select hostile and run it. Watch “Containment pathways” for Injection detected, Root read-only, Stopped by runner and Blocked network. Wait for DESTROYED, then run good again. |
+| Hostile | Select hostile and run it. Watch for Injection detected at the extraction trust boundary on the left, and Root read-only, Stopped by runner and Blocked network under “Containment pathways”. Wait for DESTROYED, then run good again. |
 
 These buttons submit real audits. The verified deployment reports `ui_fixtures: false`; fixture playback requests return HTTP 403. Each report exposes the command, exit code, output tail, duration and limits. Possible step statuses are `passed`, `failed`, `needs_credential`, `no_expectation` and `unsupported`.
 
@@ -77,7 +77,7 @@ All agent LLM calls use Vultr Serverless Inference at `https://api.vultrinferenc
 
 Each call requests JSON mode and validates the response against a Pydantic schema. An invalid response gets one retry; another invalid response fails closed. The per-call timeout is 90 s. Budgets allow at most 20 LLM calls per job, 1,000 daily, 10 jobs per client per hour and 2 concurrent jobs.
 
-The host is a Vultr shared-CPU `vc2-2c-4gb` VM in Atlanta: 2 vCPU, 4 GB RAM, Ubuntu 24.04 and Docker Engine 29. Compose runs the FastAPI controller and Caddy. The controller creates a sandbox, Squid sidecar and internal Docker network for each job.
+The host is a Vultr shared-CPU `vc2-2c-4gb` VM in Atlanta: 2 vCPU, 4 GB RAM, Ubuntu 24.04 and Docker Engine 29. Compose runs the FastAPI controller and Caddy. For each job that has a runnable step, the controller creates a sandbox, a Squid sidecar and an internal Docker network.
 
 ```mermaid
 flowchart LR
@@ -116,7 +116,9 @@ A diagnosis may propose at most one non-interactive repair command. The guard an
 - Blocked-network events come from proxy logs collected at cleanup. Request times are not recorded. An empty log makes `audit_complete` false because it cannot prove that nothing was dropped.
 - The controller holds the Docker socket, a trusted boundary equivalent to host-administrator access. Use a dedicated VM.
 - Fetching supports only public pages, respects robots.txt and applies size limits. Login pages are excluded. Credential-dependent commands are marked `needs_credential` and are not executed.
-- Extraction may omit commands. Omitted commands provide no execution evidence; extracted commands undergo the source check described above.
+- Verdicts are mechanical once steps are extracted, but the extractor chooses the steps and expectations. It can omit a command or attach a documented expectation to the wrong step; the schema and source checks catch neither. Omitted commands provide no execution evidence.
+- A correct document can still fail in the sandbox: egress is an allowlist, the root is read-only and gVisor does not implement every Linux feature. The diagnosis labels such failures as environment errors, but that label is model output.
+- Injection detection was shown on our own hidden-instruction sample only. It is not a measured defense rate.
 - The deployment is one small VM with 2 vCPU, 4 GB RAM and at most 2 concurrent jobs. Its sslip.io hostname is temporary.
 - The three sample documents were written for this project. Accuracy on other real-world documentation has not been measured.
 - Model selection was measured only on these three pages. Per-model prices were unavailable in the console, so no per-run cost is stated.
@@ -125,7 +127,7 @@ A diagnosis may propose at most one non-interactive repair command. The guard an
 
 Follow [deploy/README.md](deploy/README.md) on a dedicated Vultr VM. Install Docker and register `runsc`; configure the public origin, model IDs and inference key in the VM's `.env`. Build the web, proxy and sandbox images, start web and Caddy, then install the recovery timer. Follow the guide's checks and run good → stale → hostile → good. Confirm the actual runtime and cleanup fields in each report.
 
-## Local development needs Docker only for the containment tests
+## Local development: unit tests run without Docker, real audits need it
 
 ```sh
 python3.12 -m venv .venv
