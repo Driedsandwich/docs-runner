@@ -112,7 +112,7 @@ A diagnosis may propose at most one non-interactive repair command. The guard an
 
 ## Honest limitations define the scope of the evidence
 
-- PID-limit events cannot be observed through the Docker socket under gVisor. Every gVisor step carries `pids_unmetered`. The fork bomb is reported as “Stopped by runner”; `--pids-limit 128` is set, but no hit is measured.
+- This adapter has no reliable way to observe gVisor PID-limit events through the Docker socket. Every gVisor step carries `pids_unmetered`. The fork bomb is reported as “Stopped by runner”; `--pids-limit 128` is set, but no hit is measured.
 - Blocked-network events come from proxy logs collected at cleanup. Request times are not recorded. An empty log makes `audit_complete` false because it cannot prove that nothing was dropped.
 - The controller holds the Docker socket, a trusted boundary equivalent to host-administrator access. Use a dedicated VM.
 - Fetching supports only public pages, respects robots.txt and applies size limits. Login pages are excluded. Credential-dependent commands are marked `needs_credential` and are not executed.
