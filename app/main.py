@@ -12,6 +12,7 @@ from app.fetch import DEMO_DIR, FetchError, validate_url
 from app.jobs import Busy, JobManager
 
 STATIC = Path(__file__).parent / "static"
+VIDEO = Path(__file__).resolve().parent.parent / "docs" / "video" / "docs_runner_demo.mp4"
 
 
 class JobRequest(BaseModel):
@@ -122,6 +123,13 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
     @app.get("/app.js")
     async def script():
         return FileResponse(STATIC / "app.js", media_type="application/javascript")
+
+    @app.get("/video")
+    async def video():
+        # The walkthrough recorded from this deployment (docs/video in the repository).
+        if not VIDEO.is_file():
+            raise HTTPException(404)
+        return FileResponse(VIDEO, media_type="video/mp4")
 
     @app.get("/demo-docs.css")
     async def demo_stylesheet():

@@ -4,7 +4,7 @@ Docs Runner audits public quickstart documentation by executing its shell steps 
 
 ## Try the three samples on the public demo
 
-Open the [public demo](https://64-177-58-251.sslip.io). The [video walkthrough](docs/video/docs_runner_demo.mp4) (4 min 44 s) shows the same good → stale → hostile → good sequence recorded live on the deployment, including the hostile containment moment; its job reports are in [docs/evidence/video-run-2026-11-03](docs/evidence/video-run-2026-11-03/). Choose a sample, select **Run audit**, and wait for its result before starting another. After a job, the same button reads **Re-run**.
+Open the [public demo](https://64-177-58-251.sslip.io). The [video walkthrough](https://64-177-58-251.sslip.io/video) (4 min 44 s; the same file is [docs/video/docs_runner_demo.mp4](docs/video/docs_runner_demo.mp4)) shows the same good → stale → hostile → good sequence recorded live on the deployment, including the hostile containment moment; its job reports are in [docs/evidence/video-run-2026-11-03](docs/evidence/video-run-2026-11-03/). Choose a sample, select **Run audit**, and wait for its result before starting another. After a job, the same button reads **Re-run**.
 
 | Sample | Action and evidence to inspect |
 |---|---|
