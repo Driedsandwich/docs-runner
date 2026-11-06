@@ -123,6 +123,20 @@ A diagnosis may propose at most one non-interactive repair command. The guard an
 - The three sample documents were written for this project. Accuracy on other real-world documentation has not been measured.
 - Model selection was measured only on these three pages. Per-model prices were unavailable in the console, so no per-run cost is stated.
 
+## Use it from an AI agent: HTTP API, CLI and MCP server
+
+Docs Runner is meant to be called by agents before they follow instructions from an untrusted repository. Three entry points use the same jobs:
+
+- **HTTP API** on the deployment: `POST /api/jobs {"url": "<public quickstart>"}` returns a job id (202); `GET /api/jobs/<id>` returns the full report (steps, exit codes, output tails, containment events, cleanup); `GET /api/jobs/<id>/events` streams progress (SSE); `GET /api/config` lists the sample URLs. Refusals come back as HTTP errors with a reason (422 for a URL that is not public HTTP(S), 429 with `Retry-After` when the rate limit is reached).
+- **CLI**: `python -m app.agent_client <url>` submits, waits and prints a compact JSON verdict (`counts`, per-step `status`, `exit_code`, `suggested_fix`, `injection_detected`, `containment_events`, `denied_destinations`). Exit code 0 means the audit completed.
+- **MCP server** (`integrations/mcp/server.py`, MCP Python SDK 2.x) with three tools: `audit_quickstart(url)`, `get_audit(job_id)` and `sample_documents()`. Register it with an MCP client, for example Claude Code:
+
+  ```sh
+  claude mcp add docs-runner -- uv run --with 'mcp>=2,<3' --with httpx python /path/to/docs-runner/integrations/mcp/server.py
+  ```
+
+  Set `DOCSRUNNER_URL` to point at your own deployment; the default is the public demo. On 2026-11-06 the MCP tools were called over stdio against the public demo: `audit_quickstart` on the hostile sample returned 4 failed steps, the four containment events, `blocked.invalid` as the denied destination and `sandbox_removed: true`.
+
 ## Run it yourself using the deployment guide
 
 Follow [deploy/README.md](deploy/README.md) on a dedicated Vultr VM. Install Docker and register `runsc`; configure the public origin, model IDs and inference key in the VM's `.env`. Build the web, proxy and sandbox images, start web and Caddy, then install the recovery timer. Follow the guide's checks and run good → stale → hostile → good. Confirm the actual runtime and cleanup fields in each report.
@@ -151,9 +165,31 @@ The first sample buttons replayed fixtures. They now start real runs, and public
 
 A root write produced “Permission denied” under gVisor, so the probe moved to world-writable `/var/tmp` to expose the read-only mount. Using `glm-5.3` for every role caused extraction timeouts and invalid JSON; extraction, classification and diagnosis moved to the measured alternative. A diagnosis also misread `pids_unmetered` as missing containment. Its prompt now includes all job commands and states what pids_unmetered, a missing exit code, a proxy 403 and a read-only error mean.
 
-## Intended uses focus on documentation review
+## Who would pay, and what comes next
 
-Documentation and developer-relations teams could use this to check quickstart drift. Open-source maintainers could examine contributed install instructions before merging. Agent platforms could use the execution-and-evidence pattern. These are intended uses; adoption and benefits have not been measured.
+The problem is common and growing. A study of more than 600 software tutorials found that following their steps naively worked only 26% of the time (Mirhosseini and Parnin, "Docable", ESEC/FSE 2020). GitHub reports more than 180 million developers on the platform (Octoverse, 2025-10-28), and about 31% of respondents to the 2025 Stack Overflow Developer Survey use AI agents at work while 87% are concerned about the accuracy of what agents produce. Agents now read READMEs and run what they say, which makes a broken or hostile quickstart an execution risk, not only a documentation bug: Mozilla's 0DIN showed Claude Code running a clean repository's README setup command that fetched and ran an attacker's command from a DNS record ("Clone This Repo and I Own Your Machine", 2026-06-25), and a March 2026 study found README-embedded instructions led a commercial computer-use agent to exfiltrate data in up to 85% of its test settings while none of 15 participants noticed the injections (arXiv 2603.11862).
+
+Intended buyers and how each would pay (proposals, not measured adoption):
+
+- **Agent platforms and coding-agent users**: a pre-flight check before an agent follows repository instructions, called through the API or the MCP server and priced per audit.
+- **Documentation and developer-relations teams**: a CI check that runs the quickstart on every docs change and reports which step broke, priced per seat or per repository.
+- **Open-source maintainers**: free audits of public quickstarts, so contributed install instructions are run before merge.
+
+People already pay for isolated execution on its own: E2B lists a Pro plan at $150 per month plus usage, and Daytona bills sandboxes per second (official pricing pages, accessed 2026-11-06). Docs Runner adds the document reading, the verdict and the containment evidence on top.
+
+Next steps: a GitHub Action for docs CI, a listing in MCP registries, audits of private repositories on the customer's own VM, more runtimes in the sandbox image, and a host-side collector so gVisor PID-limit events can be measured.
+
+## How it compares
+
+Docs Runner combines four things that we found separately in existing tools (official pages, accessed 2026-11-06):
+
+| Kind of tool | Examples | What the official pages describe | What Docs Runner adds |
+|---|---|---|---|
+| Docs testers | Doc Detective, Runme, cram, rundoc, Python doctest, Rust doc tests | Run commands or examples written in a test format or in marked code blocks | Extracts steps from ordinary prose, runs them in an isolated sandbox, judges them against quoted expectations, and detects hostile steps |
+| Sandboxes | E2B, Daytona, Modal, Vercel Sandbox, gVisor | Isolate code that you send them | Reads the documentation and decides pass/fail from evidence |
+| Repository scanners | skillguard, Telnyx's instruction-file scanner | Flag hostile instructions statically | Executes the steps and records what the boundary actually absorbed |
+
+None of the 14 tools we checked states that it does all four (extraction from prose, isolated execution, judging against the document's own expectations, hostile-step detection). Some offer an API or MCP access, as Docs Runner does.
 
 ## License and repository access
 
