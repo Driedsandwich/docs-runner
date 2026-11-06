@@ -20,13 +20,17 @@ def classify(step: Step, decision: Decision) -> Decision:
     return decision
 
 
+class SourceMismatch(ValueError):
+    """The model's plan cites text that is not in the document."""
+
+
 def verify_plan_source(plan: Plan, body: str) -> None:
     # Models may extract expectations, but may not invent the pass criteria.
     normalized = " ".join(body.split())
     for step in plan.steps:
         if " ".join(step.command.split()) not in normalized:
-            raise ValueError("Extracted command is not present in document body")
+            raise SourceMismatch("Extracted command is not present in the document body")
         for expected in step.expectations:
             if " ".join(expected.source_quote.split()) not in normalized or expected.value not in expected.source_quote:
-                raise ValueError("Expectation lacks a verbatim document source")
+                raise SourceMismatch("Extracted expectation lacks a verbatim document source")
 

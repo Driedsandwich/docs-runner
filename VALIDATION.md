@@ -1,3 +1,5 @@
+> **Historical build notes (Japanese), kept for transparency.** They record intermediate states during development (for example, earlier test counts and items that were not yet deployed). Current results, the public demo and the saved live-run evidence are described in [README.md](README.md).
+
 # Docs Runner — 実装・検証記録
 
 ## 作成したもの

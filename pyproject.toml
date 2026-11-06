@@ -17,7 +17,7 @@ include = ["app*", "sandbox*", "proxy*", "demo_docs*"]
 [tool.setuptools.package-data]
 app = ["static/*.html", "static/*.js", "static/*.css"]
 proxy = ["squid.conf.template"]
-demo_docs = ["*.html"]
+demo_docs = ["*.html", "*.css"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

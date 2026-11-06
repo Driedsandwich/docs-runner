@@ -56,7 +56,7 @@ class LLM:
                 raise BudgetExceeded("Per-job LLM call limit reached")
             self.budgets.llm()  # Includes malformed answers and failed API requests.
             self.calls += 1
-            # 要確認: selected Vultr models' JSON instruction adherence and token limits.
+            # JSON mode plus schema validation; adherence and token limits vary by model.
             response = await self.client.chat.completions.create(
                 model=model, messages=messages, max_tokens=6000,
                 response_format={"type": "json_object"},

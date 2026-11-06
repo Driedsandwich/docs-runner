@@ -1,6 +1,7 @@
 import asyncio
 import dataclasses
 import json
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -11,9 +12,11 @@ from app.fetch import Fetcher, FetchError
 from app.judge import judge
 from app.llm import InvalidModelOutput, LLM
 from app.models import Attempt, Plan, StepResult
-from app.policy import classify, verify_plan_source
+from app.policy import SourceMismatch, classify, verify_plan_source
 from app.redact import redact
 from sandbox.runner import DockerRunner, SandboxError
+
+log = logging.getLogger("docsrunner.jobs")
 
 TERMINAL = {"completed", "failed", "timed_out", "cancelled"}
 
@@ -245,12 +248,16 @@ class JobManager:
                 job.state, job.error = "failed", "An external operation timed out"
         except asyncio.CancelledError:
             job.state, job.error = "cancelled", job.error or "Service shutdown"
-        except (BudgetExceeded, FetchError, InvalidModelOutput) as exc:
+        except (BudgetExceeded, FetchError, InvalidModelOutput, SourceMismatch) as exc:
             job.state, job.error = "failed", str(exc)
-        except (SandboxError, FileNotFoundError):
+        except (SandboxError, FileNotFoundError) as exc:
+            log.warning("job %s sandbox error: %s", job.id, redact(str(exc), self.settings.vultr_inference_key.get_secret_value()))
             job.state, job.error = "failed", "Sandbox infrastructure unavailable; inspect VM setup"
-        except Exception:
-            # Never expose SDK exceptions, keys, payloads or tracebacks through the report.
+        except Exception as exc:
+            # Never expose SDK exceptions, keys, payloads or tracebacks through the report;
+            # keep a redacted line in the server log so operators can tell causes apart.
+            log.error("job %s failed: %s: %s", job.id, type(exc).__name__,
+                      redact(str(exc), self.settings.vultr_inference_key.get_secret_value())[:500])
             job.state, job.error = "failed", "Processing failed; check configuration or document format"
         finally:
             job.llm_calls = llm.calls if llm else 0

@@ -137,13 +137,13 @@ python3.12 -m venv .venv
 .venv/bin/uvicorn app.main:app --no-access-log
 ```
 
-Local Uvicorn does not read `.env`; set the names listed in [deploy/README.md](deploy/README.md) in the process environment. Real jobs need Docker, the built sandbox and proxy images, the egress network and Vultr inference settings. Fixture playback exists for UI development only: it is off by default, labelled **Preview data** when enabled with `DOCSRUNNER_UI_FIXTURES=1`, and must stay off in a public deployment. Layout notes: [app/static/LAYOUT.md](app/static/LAYOUT.md).
+Local Uvicorn does not read `.env`; set the names listed in [deploy/README.md](deploy/README.md) in the process environment. Real jobs need Docker, the built sandbox and proxy images, the egress network and Vultr inference settings. With the default origin `http://localhost:8000` the sample buttons return 422, because live fetches accept only public HTTP(S) URLs on ports 80 and 443; check the UI locally with `DOCSRUNNER_UI_FIXTURES=1`, or deploy behind HTTPS as in [deploy/README.md](deploy/README.md). Fixture playback exists for UI development only: it is off by default, labelled **Preview data** when enabled with `DOCSRUNNER_UI_FIXTURES=1`, and must stay off in a public deployment. Layout notes: [app/static/LAYOUT.md](app/static/LAYOUT.md).
 
 Repository layout: `app/` orchestration, API and judging · `sandbox/` execution · `proxy/` egress allowlist · `demo_docs/` sample documents · `tests/` fake and opt-in Docker tests · `deploy/` VM setup.
 
 ## Tests exercised containment and cleanup on the VM
 
-The recorded VM run with `RUN_DOCKER_TESTS=1` had 168 passed, 0 skipped and 0 failed. It covered `runc` and `runsc`: proxy and direct-network denial, timeout termination of descendants, fork-bomb containment, root deletion, hostile-then-good execution and resource cleanup. The developer-machine run without Docker had 156 passed and 18 skipped.
+The recorded VM run with `RUN_DOCKER_TESTS=1` had 180 passed, 0 skipped and 0 failed (2026-11-06). It covered `runc` and `runsc`: proxy and direct-network denial, timeout termination of descendants, fork-bomb containment, root deletion, hostile-then-good execution and resource cleanup. The developer-machine run without Docker had 162 passed and 18 skipped.
 
 ## What we learned while building changed the implementation
 

@@ -15,8 +15,9 @@ host-administrator-equivalent boundary.
    - `VULTR_INFERENCE_BASE_URL=https://api.vultrinference.com/v1`
    - `VULTR_INFERENCE_KEY`: your inference key
    - `DOCSRUNNER_MODEL_PLAN`, `DOCSRUNNER_MODEL_EXTRACT`, `DOCSRUNNER_MODEL_GUARD`:
-     model IDs actually available to the account. **要確認**: current IDs, quotas,
-     `max_tokens` support, JSON adherence and latency for the chosen models.
+     model IDs actually available to the account. Check current IDs, quotas,
+     `max_tokens` support, JSON adherence and latency for the chosen models. The public
+     demo uses `glm-5.3` for the guard and `deepseek-v4.1-flash-1017` for the other roles.
    - `DOCSRUNNER_PUBLIC_ORIGIN=https://your-domain`, `DOCSRUNNER_DOMAIN=your-domain`
    - `DOCSRUNNER_DAILY_LLM_LIMIT=1000`, `DOCSRUNNER_RATE_PER_HOUR=10`
    - Leave `DOCSRUNNER_UI_FIXTURES` unset (default false) or set it to `0`.
@@ -63,8 +64,7 @@ The runner picks `runsc` when registered; otherwise it records `runc`. If runsc
 is registered but broken, jobs fail closed; there is no silent runtime fallback.
 `DOCSRUNNER_RUNTIME=auto` is the default. Set `runc` or `runsc` to select an
 explicit runtime; an unregistered runtime fails before creating any resources.
-**要確認**: chosen Vultr VM/kernel support, gVisor resource counter visibility,
-and performance of Python/npm. See [Docker quick start](https://gvisor.dev/docs/user_guide/quick_start/docker/).
+Check the chosen VM/kernel support and Python/npm performance under gVisor for your own documents; resource counter visibility is covered below. See [Docker quick start](https://gvisor.dev/docs/user_guide/quick_start/docker/).
 
 ### PID evidence with runsc
 
@@ -210,8 +210,7 @@ files in /work do. Commands needing `cd` must include it in the command itself.
 - Command and expected-output quotes are checked against source text, but semantic
   extraction can still be wrong. Reports expose the source quotes for inspection.
   Model-suggested repairs are advisory, policy-checked and limited to one attempt.
-- No public GitHub repository or public demo has been provisioned by this source
-  delivery. Set those up after VM containment and real Vultr calls are verified.
+- The public demo (https://64-177-58-251.sslip.io) runs this setup on one Vultr VM; its saved job reports are in `docs/evidence/`.
 
 References: [Vultr inference API](https://api.vultrinference.com/docs/reference),
 [Docker bridge gateway modes](https://docs.docker.com/engine/network/port-publishing/#gateway-modes),

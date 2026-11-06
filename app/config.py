@@ -5,7 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None, extra="ignore")
+    # Blank values copied from .env.example fall back to the defaults below.
+    model_config = SettingsConfigDict(env_file=None, extra="ignore", env_ignore_empty=True)
     vultr_inference_base_url: str = "https://api.vultrinference.com/v1"
     vultr_inference_key: SecretStr = SecretStr("")
     docsrunner_model_plan: str = ""

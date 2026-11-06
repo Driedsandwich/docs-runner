@@ -133,6 +133,8 @@ def create_app(settings: Settings | None = None, manager: JobManager | None = No
 
     @app.get("/demo-docs.css")
     async def demo_stylesheet():
+        if not (DEMO_DIR / "demo.css").is_file():
+            raise HTTPException(404)
         return FileResponse(DEMO_DIR / "demo.css", media_type="text/css")
 
     @app.get("/styles.css")
